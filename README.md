@@ -1,5 +1,5 @@
-## Specification
-### RemoteHop
+# Specification
+## RemoteHop
 **Purpose:** User wants to move [(s)frxUSD, (s)frxETH, FXS, FPI] from chain A to chain B via LZ.
 1. User sends OFT to RemoteHop on Chain A
    - If `Chain B == Fraxtal`
@@ -38,7 +38,6 @@ interface IRemoteHop {
 }
 ```
 
-### RemoteHop
 ```Solidity
 // Ethereum WFRAX => (Fraxtal) => Arbitrum WFRAX
 
@@ -60,6 +59,53 @@ IERC20(IOFT(oft).token()).approve(remoteHop, amountLD);
 // 3. Send the OFT to destination
 IRemoteHop(remoteHop).sendOFT{value: fee}(oft, dstEid, recipient, amountLD, dstGas, data);
 ```
+
+When sending `_data`, the `_recipient` on `_dstEid` must support the interface to receive the tokens via `lzCompose()`:
+```Solidity
+function hopCompose(
+    uint32 _srcEid,
+    bytes32 _sender,
+    address _oft,
+    uint256 _amount,
+    bytes memory _data
+)
+```
+
+## RemoteVaultHop
+
+The RemoteVaultHop system enables users to deposit into and redeem from ERC-4626 vaults on remote chains using cross-chain token hops.
+
+### Architecture
+
+**1. RemoteVaultHop Contract**
+- Core orchestrator implementing `IHopComposer` to handle vault operations across chains
+- Manages both local vaults (on the same chain) and remote vaults (on other chains)
+- Tracks user deposits via synthetic `RemoteVaultDeposit` ERC20 tokens
+
+**2. RemoteVaultDeposit Contract** 
+- ERC20 receipt token representing user deposits in remote vaults
+- Tracks price-per-share with linear interpolation over 100 blocks for smooth price updates
+- Provides convenience methods: `deposit()` and `redeem()` forward calls to RemoteVaultHop
+- Users interact with this token to manage their remote vault positions
+
+### Cross-Chain Vault Operations
+
+**Deposit Flow (Chain A → Vault on Chain B):**
+1. User calls `RemoteVaultDeposit.deposit(_amount)` on Chain A
+2. Transfers tokens to RemoteVaultHop and calls `HOP.sendOFT()` with `Action.Deposit` message
+3. RemoteVaultHop on Chain B receives via `hopCompose()`, calls `vault.deposit()` 
+4. Chain B sends `Action.DepositReturn` message back with shares received + vault price-per-share
+5. Chain A receives return message, mints RemoteVaultDeposit tokens to user, updates price
+
+**Redeem Flow (Chain A ← Vault on Chain B):**
+1. User calls `RemoteVaultDeposit.redeem(_amount)` on Chain A (burns deposit tokens)
+2. Sends `Action.Redeem` message to Chain B
+3. Chain B calls `vault.redeem()`, sends tokens back with `Action.RedeemReturn` message
+4. Chain A receives underlying tokens, transfers to user
+
+**Security:**
+- Only RemoteVaultHop can mint/burn RemoteVaultDeposit tokens
+- Validates incoming messages are from registered RemoteVaultHops
 
 ## Deployed Contracts
 ### HopV2 Mainnet
