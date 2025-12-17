@@ -18,7 +18,7 @@ contract RemoteVaultTest is FraxTest {
     receive() external payable {}
 
     function setupBase() public {
-        vm.createSelectFork(vm.envString("BASE_MAINNET_URL"), 36_482_910);
+        vm.createSelectFork(vm.envString("BASE_MAINNET_URL"), 39_600_910);
         frxUSD = 0xe5020A6d073a794B6E7f05678707dE47986Fb0b6;
         oft = frxUSD;
         hop = 0x22beDD55A0D29Eb31e75C70F54fADa7Ca94339B9;
@@ -44,7 +44,7 @@ contract RemoteVaultTest is FraxTest {
     }
 
     function setupFraxtal() public {
-        vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 26_472_666);
+        vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 29_472_666);
         frxUSD = 0xFc00000000000000000000000000000000000001;
         oft = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
         hop = 0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536;
