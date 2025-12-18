@@ -1,6 +1,6 @@
 # This workflow will do a clean install of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
-name: Node.js CI
+name: CI
 on:
   push:
     branches: master
@@ -11,7 +11,9 @@ jobs:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     env:
-      MAINNET_URL: ${{ secrets.MAINNET_RPC_URL }}
+      BASE_MAINNET_URL: ${{ secrets.BASE_MAINNET_URL }}
+      FRAXTAL_MAINNET_URL: ${{ secrets.FRAXTAL_MAINNET_URL }}
+      ARBITRUM_MAINNET_URL: ${{ secrets.ARBITRUM_MAINNET_URL }}
       FOUNDRY_PROFILE: "test"
     steps:
       - uses: actions/setup-node@v2
