@@ -215,7 +215,6 @@ contract RemoteVaultDepositTest is FraxTest {
         deal(address(this), 1e18); // ETH for fees
 
         uint256 depositAmount = 1e18 + 1234; // include lzDust
-        uint256 expectedAmount = (depositAmount / 1e12) * 1e12; // trimmed amount
 
         // Approve and deposit
         IERC20(frxUSD).approve(address(vaultDeposit), depositAmount);
@@ -233,7 +232,6 @@ contract RemoteVaultDepositTest is FraxTest {
         vaultDeposit.mint(address(this), 1e18 + 5678);
 
         uint256 redeemAmount = 1e18 + 5678; // include lzDust
-        uint256 expectedAmount = (redeemAmount / 1e12) * 1e12; // trimmed amount
 
         // Redeem
         vaultDeposit.redeem{ value: 1e18 }(redeemAmount, address(this));
