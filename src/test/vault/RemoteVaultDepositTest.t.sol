@@ -236,8 +236,8 @@ contract RemoteVaultDepositTest is FraxTest {
         IERC20(frxUSD).approve(address(vaultDeposit), depositAmount);
         vaultDeposit.deposit{ value: 1e18 }(depositAmount, address(this));
 
-        // Check that the correct amount was sent to RemoteVaultHop
-        assertEq(IERC20(frxUSD).balanceOf(address(this)), 1234, "RemoteVaultHop should receive trimmed amount");
+        // Check that the dust remains with the sender
+        assertEq(IERC20(frxUSD).balanceOf(address(this)), 1234, "Dust should remain with sender after deposit");
     }
 
     function test_Redeem_TrimsLzDust() public {
