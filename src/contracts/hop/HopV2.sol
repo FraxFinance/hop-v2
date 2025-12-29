@@ -227,7 +227,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         //                OFTMsgCodec.encode() =>
         //                  abi.encodePacked(_sendTo, _amountShared, addressToBytes32(msg.sender), _composeMsg)
         // _sendTo = 32, _amountShared = 8 (uint64), addressToBytes32(msg.sender) = 32,
-        // _composeMsg = 96 (abi.encodePacked(srcEid, dstEid, dstGas, sender, recipient)) + _data.length
+        // _composeMsg = 96 (abi.encodePacked(HopMessage[srcEid, dstEid, dstGas, sender, recipient])) + _data.length
         //     word 1 (bytes32 chunk): abi.encodePacked(srcEid, dstEid, dstGas)
         //     word 2: sender
         //     word 3: recipient
