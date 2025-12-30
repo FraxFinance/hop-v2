@@ -137,6 +137,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         if (msg.value < fee) revert InsufficientFee();
 
         IHopV2 HOP_ = $.HOP; // gas
+        _amount = removeDust(_amount);
         SafeERC20.forceApprove($.TOKEN, address(HOP_), _amount);
         bytes memory hopComposeMessage = abi.encode(
             RemoteVaultMessage({

@@ -236,23 +236,7 @@ contract RemoteVaultDepositTest is FraxTest {
         IERC20(frxUSD).approve(address(vaultDeposit), depositAmount);
         vaultDeposit.deposit{ value: 1e18 }(depositAmount, address(this));
 
-        // Check that the dust remains with the sender
-        assertEq(IERC20(frxUSD).balanceOf(address(this)), 1234, "Dust should remain with sender after deposit");
-    }
-
-    function test_Redeem_TrimsLzDust() public {
-        deal(address(this), 1e18); // ETH for fees
-
-        // Mint some vault deposit tokens to this contract
-        vm.prank(address(remoteVaultHop));
-        vaultDeposit.mint(address(this), 1e18 + 5678);
-
-        uint256 redeemAmount = 1e18 + 5678; // include lzDust
-
-        // Redeem
-        vaultDeposit.redeem{ value: 1e18 }(redeemAmount, address(this));
-
-        // Check that the correct amount of vault deposit tokens were burned
-        assertEq(vaultDeposit.balanceOf(address(this)), 5678, "Correct amount of tokens should be burned");
+        // Check that the dust remains in the remoteVaultHop
+        assertEq(IERC20(frxUSD).balanceOf(address(remoteVaultHop)), 1234, "Dust should remain in the hop");
     }
 }

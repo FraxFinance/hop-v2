@@ -139,8 +139,6 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
     function deposit(uint256 _amount, address _to) public payable {
         RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
 
-        _amount = (_amount / 1e12) * 1e12; // trim lzDust
-
         SafeERC20.safeTransferFrom(IERC20($.ASSET), msg.sender, address($.REMOTE_VAULT_HOP), _amount);
         RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).deposit{ value: msg.value }(
             _amount,
@@ -159,8 +157,6 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
     }
 
     function redeem(uint256 _amount, address _to) public payable {
-        _amount = (_amount / 1e12) * 1e12; // trim lzDust
-
         _burn(msg.sender, _amount);
         emit Burn(msg.sender, _amount);
 
