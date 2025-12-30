@@ -414,7 +414,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         return $.paused;
     }
 
-    function approvedOft(address oft) external view returns (bool isApproved) {
+    function approvedOft(address oft) public view returns (bool isApproved) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.approvedOft[oft];
     }
