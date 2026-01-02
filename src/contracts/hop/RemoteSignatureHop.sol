@@ -8,6 +8,7 @@ import { AggregatorV3Interface } from "src/contracts/interfaces/AggregatorV3Inte
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC3009 } from "src/contracts/interfaces/IERC3009.sol";
+import { IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 
 // ====================================================================
 // |     ______                   _______                             |
@@ -121,7 +122,8 @@ contract RemoteSignatureHop is RemoteHopV2 {
         });
 
         // receive frxUSD with authorization
-        _handleReceiveWithAuthorization(_oft, _authorization, _amountLD);
+        address underlying = IOFT(_oft).token();
+        _handleReceiveWithAuthorization(underlying, _authorization, _amountLD);
 
         // calculate fee in frxUSD
         uint256 feeInUsd = quoteInUsd(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
@@ -146,18 +148,18 @@ contract RemoteSignatureHop is RemoteHopV2 {
         _handleMsgValue(sendFee);
 
         // give the remaining balance of frxUSD back to the caller as the fee
-        IERC20(_oft).transfer(msg.sender, IERC20(_oft).balanceOf(address(this)));
+        IERC20(underlying).transfer(msg.sender, IERC20(underlying).balanceOf(address(this)));
 
         emit SendOFT(_oft, _authorization.from, _dstEid, _recipient, _amountLD);
     }
 
     /// @dev helper to avoid stack too deep
     function _handleReceiveWithAuthorization(
-        address _oft,
+        address _underlying,
         Authorization memory _authorization,
         uint256 _amountLD
     ) internal {
-        IERC3009(_oft).receiveWithAuthorization(
+        IERC3009(_underlying).receiveWithAuthorization(
             _authorization.from,
             address(this),
             _amountLD,
