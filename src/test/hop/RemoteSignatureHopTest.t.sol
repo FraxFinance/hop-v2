@@ -222,6 +222,9 @@ contract RemoteSignatureHopTest is FraxTest {
     int256 constant UPDATED_ETH_PRICE = 3000 * 1e8; // $3000 with 8 decimals
     uint8 constant ORACLE_DECIMALS = 8;
 
+    // Test constants
+    uint256 constant DUST_BUFFER = 1e18; // Buffer for dust in fee calculations
+
     address fraxtalHop;
     address user1;
     address user2;
@@ -319,9 +322,9 @@ contract RemoteSignatureHopTest is FraxTest {
             s: keccak256("s")
         });
 
-        vm.deal(msg.sender, 10 ether);
+        vm.deal(address(this), 10 ether);
 
-        uint256 senderBalanceBefore = msg.sender.balance;
+        uint256 senderBalanceBefore = address(this).balance;
 
         // Call the function
         uint256 fee = remoteSignatureHop.quote(
@@ -342,11 +345,11 @@ contract RemoteSignatureHopTest is FraxTest {
         );
 
         // Verify the fee was refunded to the sender
-        uint256 senderBalanceAfter = msg.sender.balance;
-        assertGt(senderBalanceAfter, 0, "Sender ETH balance should be non-zero");
+        uint256 senderBalanceAfter = address(this).balance;
+        assertGt(senderBalanceAfter, 0, "Sender should have remaining ETH after transaction");
 
         // Verify sender received frxUSD as fee
-        uint256 senderFrxUsdBalance = IERC20(address(frxUsdUnderlying)).balanceOf(msg.sender);
+        uint256 senderFrxUsdBalance = IERC20(address(frxUsdUnderlying)).balanceOf(address(this));
         assertGt(senderFrxUsdBalance, 0, "Sender should receive frxUSD as fee");
     }
 
@@ -800,7 +803,7 @@ contract RemoteSignatureHopTest is FraxTest {
 
         // Fee should be approximately the USD fee (minus amount sent)
         // The actual formula is: sender receives (feeInUsd + dust after removeDust)
-        assertLe(senderFrxUsdBalance, feeInUsd + 1e18, "Sender fee should not exceed USD fee + dust buffer");
+        assertLe(senderFrxUsdBalance, feeInUsd + DUST_BUFFER, "Sender fee should not exceed USD fee + dust buffer");
     }
 
     function test_FullFlow_LocalSend() public {
