@@ -54,12 +54,25 @@ contract HopV2Test is FraxTest {
         approvedOfts.push(0x75c38D46001b0F8108c4136216bd2694982C20FC);
 
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
-        hop = FraxtalHopV2(deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts));
+        hop = FraxtalHopV2(
+            deployFraxtalHopV2(
+                proxyAdmin,
+                30_255,
+                ENDPOINT,
+                0xbf228a9131AB3BB8ca8C7a4Ad574932253D99Cd1,
+                3,
+                EXECUTOR,
+                DVN,
+                TREASURY,
+                approvedOfts
+            )
+        );
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
                 proxyAdmin,
                 30_110,
                 ENDPOINT,
+                address(0),
                 OFTMsgCodec.addressToBytes32(address(hop)),
                 2,
                 EXECUTOR,
@@ -81,12 +94,15 @@ contract HopV2Test is FraxTest {
         approvedOfts.push(0x90581eCa9469D8D7F5D3B60f4715027aDFCf7927);
 
         vm.createSelectFork(vm.envString("ARBITRUM_MAINNET_URL"), 316_670_752);
-        hop = FraxtalHopV2(deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts));
+        hop = FraxtalHopV2(
+            deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, address(0), 3, EXECUTOR, DVN, TREASURY, approvedOfts)
+        );
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
                 proxyAdmin,
                 30_110,
                 ENDPOINT,
+                address(0),
                 OFTMsgCodec.addressToBytes32(address(hop)),
                 2,
                 0x31CAe3B7fB82d847621859fb1585353c5720660D,
@@ -106,12 +122,15 @@ contract HopV2Test is FraxTest {
         approvedOfts.push(0x9033BAD7aA130a2466060A2dA71fAe2219781B4b);
 
         vm.createSelectFork(vm.envString("ETHEREUM_MAINNET_URL"), 22_124_047);
-        hop = FraxtalHopV2(deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts));
+        hop = FraxtalHopV2(
+            deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, address(0), 3, EXECUTOR, DVN, TREASURY, approvedOfts)
+        );
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
                 proxyAdmin,
                 30_101,
                 ENDPOINT,
+                address(0),
                 OFTMsgCodec.addressToBytes32(address(hop)),
                 2,
                 0x173272739Bd7Aa6e4e214714048a9fE699453059,

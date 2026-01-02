@@ -9,6 +9,16 @@ struct HopMessage {
     bytes data;
 }
 
+struct Authorization {
+    address from;
+    uint256 validAfter;
+    uint256 validBefore;
+    bytes32 nonce;
+    uint8 v;
+    bytes32 r;
+    bytes32 s;
+}
+
 interface IHopV2 {
     // Mutable funcs
 
@@ -34,12 +44,22 @@ interface IHopV2 {
         bytes memory _data
     ) external view returns (uint256 fee);
 
+    function quoteInUsd(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD,
+        uint128 _dstGas,
+        bytes memory _data
+    ) external view returns (uint256 fee);
+
     function quoteHop(uint32 _dstEid, uint128 _dstGas, bytes memory _data) external view returns (uint256 fee);
 
     // Admin
 
     function pauseOn() external;
     function pauseOff() external;
+    function setGasPriceOracle(address _gasPriceOracle) external;
     function setApprovedOft(address _oft, bool _isApproved) external;
     function setNumDVNs(uint32 _numDVNs) external;
     function setHopFee(uint256 _hopFee) external;
@@ -52,6 +72,7 @@ interface IHopV2 {
     // Storage views
     function localEid() external view returns (uint32);
     function endpoint() external view returns (address);
+    function gasPriceOracle() external view returns (address);
     function paused() external view returns (bool);
     function approvedOft(address oft) external view returns (bool isApproved);
     function messageProcessed(bytes32 message) external view returns (bool isProcessed);

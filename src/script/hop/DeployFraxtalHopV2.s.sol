@@ -38,6 +38,7 @@ contract DeployFraxtalHopV2 is BaseScript {
             proxyAdmin,
             30_255,
             0x1a44076050125825900e736c501f859c50fE728c,
+            0xbf228a9131AB3BB8ca8C7a4Ad574932253D99Cd1,
             3,
             EXECUTOR,
             DVN,
@@ -78,6 +79,7 @@ function deployFraxtalHopV2(
     address _proxyAdmin,
     uint32 _LOCALEID,
     address _endpoint,
+    address _gasPriceOracle,
     uint32 _NUMDVN,
     address _EXECUTOR,
     address _DVN,
@@ -86,7 +88,7 @@ function deployFraxtalHopV2(
 ) returns (address payable) {
     bytes memory initializeArgs = abi.encodeCall(
         FraxtalHopV2.initialize,
-        (_LOCALEID, _endpoint, _NUMDVN, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
+        (_LOCALEID, _endpoint, _gasPriceOracle, _NUMDVN, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
     );
 
     address implementation = address(new FraxtalHopV2());

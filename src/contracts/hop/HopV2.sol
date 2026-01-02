@@ -3,16 +3,19 @@ pragma solidity ^0.8.0;
 import { AccessControlEnumerableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
 import { ILayerZeroDVN } from "src/contracts/interfaces/ILayerZeroDVN.sol";
 import { ILayerZeroTreasury } from "src/contracts/interfaces/ILayerZeroTreasury.sol";
 import { IExecutor } from "src/contracts/interfaces/IExecutor.sol";
+import { AggregatorV3Interface } from "src/contracts/interfaces/AggregatorV3Interface.sol";
+import { IERC3009 } from "src/contracts/interfaces/IERC3009.sol";
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { IHopV2, HopMessage } from "src/contracts/interfaces/IHopV2.sol";
+import { IHopV2, HopMessage, Authorization } from "src/contracts/interfaces/IHopV2.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
 contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
@@ -25,6 +28,8 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         uint32 localEid;
         /// @dev LZ endpoint on this chain
         address endpoint;
+        /// @dev Address of gas price oracle
+        address gasPriceOracle;
         /// @dev Admin-controlled boolean to pause hops
         bool paused;
         /// @dev Mapping to validate only trusted OFTs
@@ -65,6 +70,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     error NotAuthorized();
     error InsufficientFee();
     error RefundFailed();
+    error GaslessTransfersNotSupported();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -80,6 +86,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function __init_HopV2(
         uint32 _localEid,
         address _endpoint,
+        address _gasPriceOracle,
         uint32 _numDVNs,
         address _EXECUTOR,
         address _DVN,
@@ -91,6 +98,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         HopV2Storage storage $ = _getHopV2Storage();
         $.localEid = _localEid;
         $.endpoint = _endpoint;
+        $.gasPriceOracle = _gasPriceOracle;
         for (uint256 i = 0; i < _approvedOfts.length; i++) {
             $.approvedOft[_approvedOfts[i]] = true;
         }
@@ -101,6 +109,100 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     }
 
     // Public methods
+
+    function sendFrxUsdWithAuthorization(
+        Authorization memory _authorization,
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD
+    ) external {
+        sendFrxUsdWithAuthorization({
+            _authorization: _authorization,
+            _oft: _oft,
+            _dstEid: _dstEid,
+            _recipient: _recipient,
+            _amountLD: _amountLD,
+            _dstGas: 0,
+            _data: ""
+        });
+    }
+
+    function sendFrxUsdWithAuthorization(
+        Authorization memory _authorization,
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD,
+        uint128 _dstGas,
+        bytes memory _data
+    ) public {
+        if (paused()) revert HopPaused();
+        if (!approvedOft(_oft)) revert InvalidOFT();
+        if (keccak256(abi.encodePacked(IERC20Metadata(_oft).symbol())) != keccak256(abi.encodePacked("frxUSD"))) {
+            revert InvalidOFT();
+        }
+
+        // generate hop message
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: localEid(),
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+
+        // receive frxUSD with authorization
+        address underlying = IOFT(_oft).token();
+        _handleReceiveWithAuthorization(underlying, _authorization, _amountLD);
+
+        // calculate fee in frxUSD
+        uint256 feeInUsd = quoteInUsd(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
+
+        // subtract fee from amount and clean up dust
+        _amountLD = removeDust(_oft, _amountLD - feeInUsd);
+
+        // send with amount less fees
+        uint256 sendFee;
+        if (_dstEid == localEid()) {
+            _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
+        } else {
+            sendFee = _sendToDestination({
+                _oft: _oft,
+                _amountLD: _amountLD,
+                _isTrustedHopMessage: true,
+                _hopMessage: hopMessage
+            });
+        }
+
+        // validate the msg.value
+        _handleMsgValue(sendFee);
+
+        // give the remaining balance of frxUSD back to the caller as the fee
+        IERC20(underlying).transfer(msg.sender, IERC20(underlying).balanceOf(address(this)));
+
+        emit SendOFT(_oft, _authorization.from, _dstEid, _recipient, _amountLD);
+    }
+
+    /// @dev helper to avoid stack too deep
+    function _handleReceiveWithAuthorization(
+        address _underlying,
+        Authorization memory _authorization,
+        uint256 _amountLD
+    ) internal {
+        IERC3009(_underlying).receiveWithAuthorization(
+            _authorization.from,
+            address(this),
+            _amountLD,
+            _authorization.validAfter,
+            _authorization.validBefore,
+            _authorization.nonce,
+            _authorization.v,
+            _authorization.r,
+            _authorization.s
+        );
+    }
 
     /// @notice Send an OFT to a destination without encoded data
     /// @param _oft Address of OFT
@@ -203,6 +305,27 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
             ? 0
             : quoteHop(_dstEid, _dstGas, _data);
         return fee.nativeFee + hopFeeOnFraxtal;
+    }
+
+    /// @notice Get the fee quote in USD for sending frxUSD via Hop
+    function quoteInUsd(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD,
+        uint128 _dstGas,
+        bytes memory _data
+    ) public view returns (uint256) {
+        uint256 feeInGas = quote(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
+
+        HopV2Storage storage $ = _getHopV2Storage();
+        if ($.gasPriceOracle == address(0)) revert GaslessTransfersNotSupported();
+
+        (, int256 gasPrice, , , ) = AggregatorV3Interface($.gasPriceOracle).latestRoundData();
+        uint8 gasPriceDecimals = AggregatorV3Interface($.gasPriceOracle).decimals();
+        uint256 feeInUsd = (feeInGas * uint256(gasPrice)) / (10 ** gasPriceDecimals);
+
+        return feeInUsd;
     }
 
     /// @notice Get a gas cost estimate of executing a hop on Fraxtal to a destination chain
@@ -347,6 +470,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         $.paused = false;
     }
 
+    function setGasPriceOracle(address _gasPriceOracle) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        $.gasPriceOracle = _gasPriceOracle;
+    }
+
     function setApprovedOft(address _oft, bool _isApproved) external onlyRole(DEFAULT_ADMIN_ROLE) {
         HopV2Storage storage $ = _getHopV2Storage();
         $.approvedOft[_oft] = _isApproved;
@@ -407,6 +535,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function endpoint() external view returns (address) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.endpoint;
+    }
+
+    function gasPriceOracle() external view returns (address) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        return $.gasPriceOracle;
     }
 
     function paused() public view returns (bool) {

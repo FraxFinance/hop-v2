@@ -33,6 +33,7 @@ abstract contract DeployRemoteHopV2 is BaseScript {
 
     address proxyAdmin;
     address endpoint;
+    address gasPriceOracle;
     uint32 localEid;
 
     address EXECUTOR;
@@ -62,6 +63,7 @@ abstract contract DeployRemoteHopV2 is BaseScript {
             _proxyAdmin: proxyAdmin,
             _localEid: localEid,
             _endpoint: endpoint,
+            _gasPriceOracle: gasPriceOracle,
             _fraxtalHop: bytes32(uint256(uint160(FRAXTAL_HOP))),
             _numDVNs: 3,
             _EXECUTOR: EXECUTOR,
@@ -126,6 +128,7 @@ function deployRemoteHopV2(
     address _proxyAdmin,
     uint32 _localEid,
     address _endpoint,
+    address _gasPriceOracle,
     bytes32 _fraxtalHop,
     uint32 _numDVNs,
     address _EXECUTOR,
@@ -135,7 +138,7 @@ function deployRemoteHopV2(
 ) returns (address payable) {
     bytes memory initializeArgs = abi.encodeCall(
         RemoteHopV2.initialize,
-        (_localEid, _endpoint, _fraxtalHop, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
+        (_localEid, _endpoint, _gasPriceOracle, _fraxtalHop, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
     );
 
     address implementation = address(new RemoteHopV2());
