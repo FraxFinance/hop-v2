@@ -10,5 +10,6 @@ contract DeployRemoteVaultHopFraxtal is DeployRemoteVaultHop {
         HOPV2 = 0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536;
         EID = 30_255; // Fraxtal Mainnet
         proxyAdmin = 0x223a681fc5c5522c85C96157c0efA18cd6c5405c;
+        msig = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
     }
 }

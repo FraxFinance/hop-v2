@@ -134,11 +134,11 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         if ($.remoteVaultHops[_remoteEid] == address(0)) revert InvalidChain();
         if (address($.depositToken[_remoteEid][_remoteVault]) != msg.sender) revert InvalidCaller();
 
+        _amount = removeDust(_amount);
         uint256 fee = quote(_amount, _remoteEid, _remoteVault);
         if (msg.value < fee) revert InsufficientFee();
 
         IHopV2 HOP_ = $.HOP; // gas
-        _amount = removeDust(_amount);
         SafeERC20.forceApprove($.TOKEN, address(HOP_), _amount);
         bytes memory hopComposeMessage = abi.encode(
             RemoteVaultMessage({
