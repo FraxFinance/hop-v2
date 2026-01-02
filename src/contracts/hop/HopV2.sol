@@ -1,6 +1,8 @@
 pragma solidity ^0.8.0;
 
 import { AccessControlEnumerableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
+import { EIP712Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -15,13 +17,21 @@ import { IERC3009 } from "src/contracts/interfaces/IERC3009.sol";
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { IHopV2, HopMessage, Authorization } from "src/contracts/interfaces/IHopV2.sol";
+import { IHopV2, HopMessage, SignedAuthorization, SignedBridgeTx } from "src/contracts/interfaces/IHopV2.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
-contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
+contract HopV2 is AccessControlEnumerableUpgradeable, EIP712Upgradeable, IHopV2 {
     uint32 internal constant FRAXTAL_EID = 30_255;
     /// @dev keccak256("PAUSER_ROLE")
     bytes32 internal constant PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
+
+    // keccak256("SendBridgeTx(address authorizer,address oft,uint32 dstEid,bytes32 recipient,uint128 dstGas,bytes data,uint256 minAmountLD,bytes32 nonce)")
+    bytes32 public constant SEND_BRIDGE_TX_TYPEHASH =
+        0xdfbdc4b3cafd53ba464466ac9fe50c6cd9e630ae41f388699ef3c64406254170;
+
+    // keccak256("CancelBridgeTx(address authorizer,bytes32 nonce)")
+    bytes32 public constant CANCEL_BRIDGE_TX_TYPEHASH =
+        0xd7e1946e922a0a335bebafbf01b608ba4bd37a86749c40e4e4db24ce75cba143;
 
     struct HopV2Storage {
         /// @dev EID of this chain
@@ -38,6 +48,8 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         mapping(bytes32 message => bool isProcessed) messageProcessed;
         /// @dev Mapping to track the Hop on a remote chain
         mapping(uint32 eid => bytes32 hop) remoteHop;
+        /// @dev mapping to track authorization state of gasless transfers (signed bridge txs)
+        mapping(address authorizer => mapping(bytes32 nonce => bool isUsed)) isAuthorizationUsed;
         /// @dev number of DVNs used to verify a message
         uint32 numDVNs;
         /// @dev Hop fee charged to users to use the Hop service
@@ -71,6 +83,10 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     error InsufficientFee();
     error RefundFailed();
     error GaslessTransfersNotSupported();
+    error InsufficientAmountAfterFees();
+    error UsedOrCancelledAuthorization();
+    error InvalidSignature();
+    error SenderMismatch();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -106,71 +122,63 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         $.EXECUTOR = _EXECUTOR;
         $.DVN = _DVN;
         $.TREASURY = _TREASURY;
+
+        __EIP712_init("HopV2", "1");
     }
 
     // Public methods
 
     function sendFrxUsdWithAuthorization(
-        Authorization memory _authorization,
-        address _oft,
-        uint32 _dstEid,
-        bytes32 _recipient,
-        uint256 _amountLD
-    ) external {
-        sendFrxUsdWithAuthorization({
-            _authorization: _authorization,
-            _oft: _oft,
-            _dstEid: _dstEid,
-            _recipient: _recipient,
-            _amountLD: _amountLD,
-            _dstGas: 0,
-            _data: ""
-        });
-    }
-
-    function sendFrxUsdWithAuthorization(
-        Authorization memory _authorization,
-        address _oft,
-        uint32 _dstEid,
-        bytes32 _recipient,
-        uint256 _amountLD,
-        uint128 _dstGas,
-        bytes memory _data
+        SignedAuthorization memory _authorization,
+        SignedBridgeTx memory _bridgeTx
     ) public {
         if (paused()) revert HopPaused();
-        if (!approvedOft(_oft)) revert InvalidOFT();
-        if (keccak256(abi.encodePacked(IERC20Metadata(_oft).symbol())) != keccak256(abi.encodePacked("frxUSD"))) {
+        if (!approvedOft(_bridgeTx.oft)) revert InvalidOFT();
+        address underlying = IOFT(_bridgeTx.oft).token();
+        if (keccak256(abi.encodePacked(IERC20Metadata(underlying).symbol())) != keccak256(abi.encodePacked("frxUSD"))) {
             revert InvalidOFT();
         }
+        if (_authorization.from != _bridgeTx.authorizer) revert SenderMismatch();
+
+        _markBridgeTxAsUsed(_bridgeTx, false);
 
         // generate hop message
         HopMessage memory hopMessage = HopMessage({
             srcEid: localEid(),
-            dstEid: _dstEid,
-            dstGas: _dstGas,
+            dstEid: _bridgeTx.dstEid,
+            dstGas: _bridgeTx.dstGas,
             sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _recipient,
-            data: _data
+            recipient: _bridgeTx.recipient,
+            data: _bridgeTx.data
         });
 
         // receive frxUSD with authorization
-        address underlying = IOFT(_oft).token();
-        _handleReceiveWithAuthorization(underlying, _authorization, _amountLD);
+        _handleReceiveWithAuthorization(underlying, _authorization);
 
         // calculate fee in frxUSD
-        uint256 feeInUsd = quoteInUsd(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
+        uint256 feeInUsd = quoteInUsd(
+            _bridgeTx.oft,
+            _bridgeTx.dstEid,
+            _bridgeTx.recipient,
+            _authorization.value,
+            _bridgeTx.dstGas,
+            _bridgeTx.data
+        );
 
         // subtract fee from amount and clean up dust
-        _amountLD = removeDust(_oft, _amountLD - feeInUsd);
+        uint256 amountLD = removeDust(_bridgeTx.oft, _authorization.value - feeInUsd);
+        if (amountLD < _bridgeTx.minAmountLD) {
+            revert InsufficientAmountAfterFees();
+        }
 
         // send with amount less fees
         uint256 sendFee;
-        if (_dstEid == localEid()) {
-            _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
+        if (_bridgeTx.dstEid == localEid()) {
+            _sendLocal({ _oft: _bridgeTx.oft, _amount: amountLD, _hopMessage: hopMessage });
         } else {
             sendFee = _sendToDestination({
-                _oft: _oft,
-                _amountLD: _amountLD,
+                _oft: _bridgeTx.oft,
+                _amountLD: amountLD,
                 _isTrustedHopMessage: true,
                 _hopMessage: hopMessage
             });
@@ -182,26 +190,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         // give the remaining balance of frxUSD back to the caller as the fee
         IERC20(underlying).transfer(msg.sender, IERC20(underlying).balanceOf(address(this)));
 
-        emit SendOFT(_oft, _authorization.from, _dstEid, _recipient, _amountLD);
+        emit SendOFT(_bridgeTx.oft, _authorization.from, _bridgeTx.dstEid, _bridgeTx.recipient, amountLD);
     }
 
-    /// @dev helper to avoid stack too deep
-    function _handleReceiveWithAuthorization(
-        address _underlying,
-        Authorization memory _authorization,
-        uint256 _amountLD
-    ) internal {
-        IERC3009(_underlying).receiveWithAuthorization(
-            _authorization.from,
-            address(this),
-            _amountLD,
-            _authorization.validAfter,
-            _authorization.validBefore,
-            _authorization.nonce,
-            _authorization.v,
-            _authorization.r,
-            _authorization.s
-        );
+    function cancelBridgeTx(SignedBridgeTx memory _bridgeTx) external {
+        _markBridgeTxAsUsed(_bridgeTx, true);
     }
 
     /// @notice Send an OFT to a destination without encoded data
@@ -360,6 +353,63 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     }
 
     // internal methods
+
+    /// @dev helper to avoid stack too deep
+    function _handleReceiveWithAuthorization(address _underlying, SignedAuthorization memory _authorization) internal {
+        IERC3009(_underlying).receiveWithAuthorization(
+            _authorization.from,
+            _authorization.to,
+            _authorization.value,
+            _authorization.validAfter,
+            _authorization.validBefore,
+            _authorization.nonce,
+            _authorization.v,
+            _authorization.r,
+            _authorization.s
+        );
+    }
+
+    /// @dev Validate a signed bridge tx for gasless transfers
+    function _markBridgeTxAsUsed(SignedBridgeTx memory _bridgeTx, bool _isCancel) internal {
+        HopV2Storage storage $ = _getHopV2Storage();
+
+        // Ensure that nonce has not been used
+        if ($.isAuthorizationUsed[_bridgeTx.authorizer][_bridgeTx.nonce]) {
+            revert UsedOrCancelledAuthorization();
+        }
+
+        // Generate the struct hash
+        bytes32 structHash;
+        if (_isCancel) {
+            structHash = keccak256(abi.encode(CANCEL_BRIDGE_TX_TYPEHASH, _bridgeTx.authorizer, _bridgeTx.nonce));
+        } else {
+            structHash = keccak256(
+                abi.encode(
+                    SEND_BRIDGE_TX_TYPEHASH,
+                    _bridgeTx.authorizer,
+                    _bridgeTx.oft,
+                    _bridgeTx.dstEid,
+                    _bridgeTx.recipient,
+                    _bridgeTx.dstGas,
+                    keccak256(_bridgeTx.data),
+                    _bridgeTx.minAmountLD,
+                    _bridgeTx.nonce
+                )
+            );
+        }
+
+        // check that signature is valid
+        if (
+            !SignatureChecker.isValidSignatureNow({
+                signer: _bridgeTx.authorizer,
+                hash: _hashTypedDataV4(structHash),
+                signature: abi.encodePacked(_bridgeTx.v, _bridgeTx.r, _bridgeTx.s)
+            })
+        ) revert InvalidSignature();
+
+        // mark the nonce as used
+        $.isAuthorizationUsed[_bridgeTx.authorizer][_bridgeTx.nonce] = true;
+    }
 
     /// @dev Send the OFT and execute hopCompose on this chain (locally)
     function _sendLocal(address _oft, uint256 _amount, HopMessage memory _hopMessage) internal {
@@ -560,6 +610,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function remoteHop(uint32 eid) public view returns (bytes32 hop) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.remoteHop[eid];
+    }
+
+    function authorizationState(address authorizer, bytes32 nonce) external view returns (bool) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        return $.isAuthorizationUsed[authorizer][nonce];
     }
 
     function numDVNs() external view returns (uint32) {
