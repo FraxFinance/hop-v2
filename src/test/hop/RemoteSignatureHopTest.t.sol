@@ -217,6 +217,11 @@ contract RemoteSignatureHopTest is FraxTest {
     uint32 constant FRAXTAL_EID = 30_255;
     uint32 constant ARBITRUM_EID = 30_110;
 
+    // Oracle price constants
+    int256 constant INITIAL_ETH_PRICE = 2000 * 1e8; // $2000 with 8 decimals
+    int256 constant UPDATED_ETH_PRICE = 3000 * 1e8; // $3000 with 8 decimals
+    uint8 constant ORACLE_DECIMALS = 8;
+
     address fraxtalHop;
     address user1;
     address user2;
@@ -237,7 +242,7 @@ contract RemoteSignatureHopTest is FraxTest {
         frxUsdOft = new MockOFT(address(frxUsdUnderlying));
 
         // Deploy oracle with ETH price of $2000 with 8 decimals
-        chainlinkOracle = new MockChainlinkOracle(2000 * 1e8, 8);
+        chainlinkOracle = new MockChainlinkOracle(INITIAL_ETH_PRICE, ORACLE_DECIMALS);
 
         // Setup approved OFTs
         approvedOfts.push(address(frxUsdOft));
@@ -338,12 +343,11 @@ contract RemoteSignatureHopTest is FraxTest {
 
         // Verify the fee was refunded to the sender
         uint256 senderBalanceAfter = msg.sender.balance;
-        assertGt(senderBalanceAfter, 0, "Sender should receive frxUSD as fee");
-        assertEq(
-            IERC20(address(frxUsdUnderlying)).balanceOf(msg.sender),
-            IERC20(address(frxUsdUnderlying)).balanceOf(msg.sender),
-            "Sender should receive frxUSD fee"
-        );
+        assertGt(senderBalanceAfter, 0, "Sender ETH balance should be non-zero");
+
+        // Verify sender received frxUSD as fee
+        uint256 senderFrxUsdBalance = IERC20(address(frxUsdUnderlying)).balanceOf(msg.sender);
+        assertGt(senderFrxUsdBalance, 0, "Sender should receive frxUSD as fee");
     }
 
     function test_SendFrxUsdWithAuthorization_WithCustomGasAndData() public {
@@ -683,13 +687,13 @@ contract RemoteSignatureHopTest is FraxTest {
         );
 
         // With ETH price at $2000, the USD fee should be feeInEth * 2000
-        uint256 expectedFeeInUsd = (feeInEth * 2000 * 1e8) / 1e8; // Oracle has 8 decimals
+        uint256 expectedFeeInUsd = (feeInEth * uint256(INITIAL_ETH_PRICE)) / (10 ** ORACLE_DECIMALS);
         assertEq(feeInUsd, expectedFeeInUsd, "Fee in USD should match calculation");
     }
 
     function test_QuoteInUsd_WithDifferentEthPrice() public {
         // Change ETH price to $3000
-        chainlinkOracle.setPrice(3000 * 1e8);
+        chainlinkOracle.setPrice(UPDATED_ETH_PRICE);
 
         uint256 amount = 100e18;
         uint256 feeInEth = remoteSignatureHop.quote(
@@ -710,7 +714,7 @@ contract RemoteSignatureHopTest is FraxTest {
             ""
         );
 
-        uint256 expectedFeeInUsd = (feeInEth * 3000 * 1e8) / 1e8;
+        uint256 expectedFeeInUsd = (feeInEth * uint256(UPDATED_ETH_PRICE)) / (10 ** ORACLE_DECIMALS);
         assertEq(feeInUsd, expectedFeeInUsd, "Fee in USD should reflect new ETH price");
     }
 
