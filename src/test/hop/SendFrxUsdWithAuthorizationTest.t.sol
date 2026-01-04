@@ -146,7 +146,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // Build the bridge tx
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,
@@ -190,7 +190,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // Build the bridge tx
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,
@@ -229,7 +229,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // Build bridge tx with wrong srcEid
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,
@@ -276,7 +276,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // Build bridge tx with minAmountLD higher than amount - fees (guaranteed to fail)
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,
@@ -328,7 +328,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
             // Build the bridge tx
             BridgeTx memory bridgeTx = BridgeTx({
                 from: authorizer,
-                to: hop,
+                to: authorizer,
                 value: testAmount,
                 validAfter: validAfter,
                 validBefore: validBefore,
@@ -381,7 +381,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
             // Build the bridge tx with different salt
             BridgeTx memory bridgeTx = BridgeTx({
                 from: authorizer,
-                to: hop,
+                to: authorizer,
                 value: amount,
                 validAfter: validAfter,
                 validBefore: validBefore,
@@ -432,7 +432,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // Build bridge tx with minAmountLD just below expected amount
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,
@@ -504,7 +504,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // build the bridge tx
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,

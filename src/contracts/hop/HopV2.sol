@@ -347,7 +347,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         bytes32 nonce = keccak256(abi.encode(_bridgeTx));
         IERC3009(_underlying).receiveWithAuthorization(
             _bridgeTx.from,
-            _bridgeTx.to,
+            address(this),
             _bridgeTx.value,
             _bridgeTx.validAfter,
             _bridgeTx.validBefore,
