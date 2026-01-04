@@ -129,7 +129,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         // build the bridge tx
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
-            to: hop,
+            to: authorizer,
             value: amount,
             validAfter: validAfter,
             validBefore: validBefore,
