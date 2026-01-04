@@ -112,7 +112,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
 
     // Public methods
 
-    function sendFrxUsdWithAuthorization(address _oft, BridgeTx memory _bridgeTx, Signature memory _signature) public {
+    function sendFrxUsdWithAuthorization(
+        address _oft,
+        BridgeTx memory _bridgeTx,
+        Signature memory _signature
+    ) external payable {
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();
         if (!$.approvedOft[_oft]) revert InvalidOFT();
