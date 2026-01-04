@@ -136,7 +136,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
             dstEid: _bridgeTx.dstEid,
             dstGas: _bridgeTx.dstGas,
             sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: bytes32(uint256(uint160(_bridgeTx.to))),
+            recipient: _bridgeTx.recipient,
             data: _bridgeTx.data
         });
 
@@ -147,7 +147,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         uint256 feeInUsd = quoteInUsd(
             _oft,
             _bridgeTx.dstEid,
-            bytes32(uint256(uint160(_bridgeTx.to))),
+            _bridgeTx.recipient,
             _bridgeTx.value,
             _bridgeTx.dstGas,
             _bridgeTx.data
@@ -178,7 +178,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         // give the remaining balance of frxUSD back to the caller as the fee
         IERC20(underlying).transfer(msg.sender, IERC20(underlying).balanceOf(address(this)));
 
-        emit SendOFT(_oft, _bridgeTx.from, _bridgeTx.dstEid, bytes32(uint256(uint160(_bridgeTx.to))), amountLD);
+        emit SendOFT(_oft, _bridgeTx.from, _bridgeTx.dstEid, _bridgeTx.recipient, amountLD);
     }
 
     /// @notice Send an OFT to a destination without encoded data

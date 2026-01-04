@@ -17,7 +17,7 @@ struct Signature {
 
 struct BridgeTx {
     address from;
-    address to;
+    bytes32 recipient;
     uint256 value;
     uint256 validAfter;
     uint256 validBefore;
