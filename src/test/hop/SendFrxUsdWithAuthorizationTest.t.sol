@@ -270,6 +270,9 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
         uint256 feeInUsd = HopV2(hop).quoteInUsd(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
         
+        // Calculate the expected amount after fees, then set minAmountLD above it
+        uint256 expectedAmountAfterFees = amount - feeInUsd;
+        
         // Build bridge tx with minAmountLD higher than amount - fees (guaranteed to fail)
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
@@ -282,7 +285,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
             dstEid: dstEid,
             dstGas: 0,
             data: "",
-            minAmountLD: amount + 1 // Guaranteed to be higher than amount after fees
+            minAmountLD: expectedAmountAfterFees + 1 // Guaranteed to exceed actual amount after fees
         });
         
         // Generate signature
@@ -423,6 +426,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         uint256 expectedAmountAfterFees = amount - feeInUsd;
         
         // Calculate a safe minAmountLD value (90% of expected amount after fees)
+        // This tests that the transaction succeeds when minAmountLD is below the actual amount after fees
         uint256 safeMinAmount = (expectedAmountAfterFees * 90) / 100;
         
         // Build bridge tx with minAmountLD just below expected amount
