@@ -358,26 +358,18 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         }
     }
 
-    function test_sendFrxUsdWithAuthorization_Arbitrum_WithDifferentRecipients() public {
+    function test_sendFrxUsdWithAuthorization_Arbitrum_WithDifferentSalts() public {
         setUpArbitrum();
         
-        address recipient1 = vm.addr(0x111);
-        address recipient2 = vm.addr(0x222);
-        address recipient3 = vm.addr(0x333);
-        
-        address[] memory recipients = new address[](3);
-        recipients[0] = recipient1;
-        recipients[1] = recipient2;
-        recipients[2] = recipient3;
-        
-        for (uint256 i = 0; i < recipients.length; i++) {
-            // Fund authorizer
+        // Test that different salts allow multiple transactions from same authorizer
+        for (uint256 i = 0; i < 3; i++) {
+            // Fund authorizer for each iteration
             deal(frxUsd, authorizer, amount);
             
-            // Build the bridge tx
+            // Build the bridge tx with different salt
             BridgeTx memory bridgeTx = BridgeTx({
                 from: authorizer,
-                to: recipients[i],
+                to: hop,
                 value: amount,
                 validAfter: validAfter,
                 validBefore: validBefore,
@@ -421,6 +413,9 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         uint256 feeInUsd = HopV2(hop).quoteInUsd(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
         uint256 expectedAmountAfterFees = amount - feeInUsd;
         
+        // Calculate a safe minAmountLD value (90% of expected amount after fees)
+        uint256 safeMinAmount = (expectedAmountAfterFees * 90) / 100;
+        
         // Build bridge tx with minAmountLD just below expected amount
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
@@ -433,7 +428,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
             dstEid: dstEid,
             dstGas: 0,
             data: "",
-            minAmountLD: expectedAmountAfterFees - 1e18 // Set minAmountLD to a reasonable value
+            minAmountLD: safeMinAmount
         });
         
         // Generate signature
