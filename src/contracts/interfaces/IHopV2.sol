@@ -21,6 +21,7 @@ struct BridgeTx {
     uint256 value;
     uint256 validAfter;
     uint256 validBefore;
+    bytes32 salt;
     uint32 srcEid;
     uint32 dstEid;
     uint128 dstGas;
