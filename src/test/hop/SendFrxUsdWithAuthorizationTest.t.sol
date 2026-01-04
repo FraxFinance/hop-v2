@@ -34,6 +34,10 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
     uint32 dstEid;
     bytes data = "mock data string";
 
+    // Chain EIDs
+    uint32 constant FRAXTAL_EID = 30_255;
+    uint32 constant ARBITRUM_EID = 30_110;
+
     address hop;
     address oft;
     address frxUsd;
@@ -41,14 +45,19 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
 
     address[] approvedOfts;
 
+    /// @notice Helper function to generate unique salts for tests
+    function generateSalt(uint256 index) internal pure returns (bytes32) {
+        return keccak256(abi.encode("salt", index));
+    }
+
     function setUpFraxtal() public virtual {
         // TODO: update block number post frxUSD 3009 upgrade
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
 
         validAfter = block.timestamp - 1;
         validBefore = block.timestamp + 1 days;
-        srcEid = 30_255;
-        dstEid = 30_110;
+        srcEid = FRAXTAL_EID;
+        dstEid = ARBITRUM_EID;
 
         oft = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
         approvedOfts.push(oft); // frxUSD Lockbox
@@ -79,8 +88,8 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
 
         validAfter = block.timestamp - 1;
         validBefore = block.timestamp + 1 days;
-        srcEid = 30_110;
-        dstEid = 30_255;
+        srcEid = ARBITRUM_EID;
+        dstEid = FRAXTAL_EID;
 
         oft = 0x80Eede496655FB9047dd39d9f418d5483ED600df;
         approvedOfts.push(oft); // frxUSD OFT
@@ -225,7 +234,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
             validAfter: validAfter,
             validBefore: validBefore,
             salt: salt,
-            srcEid: 30_255, // Wrong srcEid (Fraxtal instead of Arbitrum)
+            srcEid: FRAXTAL_EID, // Wrong srcEid (Fraxtal instead of Arbitrum)
             dstEid: dstEid,
             dstGas: 0,
             data: "",
@@ -261,7 +270,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
         uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
         uint256 feeInUsd = HopV2(hop).quoteInUsd(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
         
-        // Build bridge tx with minAmountLD higher than amount - fees
+        // Build bridge tx with minAmountLD higher than amount - fees (guaranteed to fail)
         BridgeTx memory bridgeTx = BridgeTx({
             from: authorizer,
             to: hop,
@@ -273,7 +282,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
             dstEid: dstEid,
             dstGas: 0,
             data: "",
-            minAmountLD: amount // This will be higher than amount after fees are deducted
+            minAmountLD: amount + 1 // Guaranteed to be higher than amount after fees
         });
         
         // Generate signature
@@ -320,7 +329,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
                 value: testAmount,
                 validAfter: validAfter,
                 validBefore: validBefore,
-                salt: keccak256(abi.encode("salt", i)),
+                salt: generateSalt(i),
                 srcEid: srcEid,
                 dstEid: dstEid,
                 dstGas: 0,
@@ -373,7 +382,7 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
                 value: amount,
                 validAfter: validAfter,
                 validBefore: validBefore,
-                salt: keccak256(abi.encode("salt", i)),
+                salt: generateSalt(i),
                 srcEid: srcEid,
                 dstEid: dstEid,
                 dstGas: 0,
@@ -460,10 +469,11 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
     function test_sendFrxUsdWithAuthorization_Arbitrum_WithLargeData() public {
         setUpArbitrum();
         
-        // Create a large data payload
+        // Create a large data payload efficiently using repeated pattern
+        bytes memory pattern = "test data pattern for cross-chain message";
         bytes memory largeData = new bytes(1000);
         for (uint256 i = 0; i < 1000; i++) {
-            largeData[i] = bytes1(uint8(i % 256));
+            largeData[i] = pattern[i % pattern.length];
         }
         
         sendFrxUsdWithAuthorization(largeData);
