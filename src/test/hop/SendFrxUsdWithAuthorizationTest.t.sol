@@ -34,6 +34,10 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
     uint32 dstEid;
     bytes data = "mock data string";
 
+    // Chain EIDs
+    uint32 constant FRAXTAL_EID = 30_255;
+    uint32 constant ARBITRUM_EID = 30_110;
+
     address hop;
     address oft;
     address frxUsd;
@@ -41,14 +45,19 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
 
     address[] approvedOfts;
 
+    /// @notice Helper function to generate unique salts for tests
+    function generateSalt(uint256 index) internal pure returns (bytes32) {
+        return keccak256(abi.encode("salt", index));
+    }
+
     function setUpFraxtal() public virtual {
         // TODO: update block number post frxUSD 3009 upgrade
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
 
         validAfter = block.timestamp - 1;
         validBefore = block.timestamp + 1 days;
-        srcEid = 30_255;
-        dstEid = 30_110;
+        srcEid = FRAXTAL_EID;
+        dstEid = ARBITRUM_EID;
 
         oft = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
         approvedOfts.push(oft); // frxUSD Lockbox
@@ -79,8 +88,8 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
 
         validAfter = block.timestamp - 1;
         validBefore = block.timestamp + 1 days;
-        srcEid = 30_110;
-        dstEid = 30_255;
+        srcEid = ARBITRUM_EID;
+        dstEid = FRAXTAL_EID;
 
         oft = 0x80Eede496655FB9047dd39d9f418d5483ED600df;
         approvedOfts.push(oft); // frxUSD OFT
@@ -123,6 +132,372 @@ contract SendFrxUsdWithAuthorizationTest is FraxTest {
     function test_sendFrxUsdWithAuthorizationWithoutData_Arbitrum() public {
         setUpArbitrum();
         sendFrxUsdWithAuthorization("");
+    }
+
+    // ============ Error Case Tests - Arbitrum ============
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_RevertWhen_Paused() public {
+        setUpArbitrum();
+        
+        // Pause the hop
+        vm.prank(address(this));
+        HopV2(hop).pause();
+        
+        // Build the bridge tx
+        BridgeTx memory bridgeTx = BridgeTx({
+            from: authorizer,
+            to: authorizer,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: 0
+        });
+        
+        // Generate signature
+        nonce = keccak256(abi.encode(bridgeTx));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: hop,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        Signature memory signature;
+        (signature.v, signature.r, signature.s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+        
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        
+        vm.prank(sender);
+        vm.expectRevert(abi.encodeWithSignature("HopPaused()"));
+        HopV2(hop).sendFrxUsdWithAuthorization{ value: fee }(oft, bridgeTx, signature);
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_RevertWhen_InvalidOFT() public {
+        setUpArbitrum();
+        
+        // Use an unapproved OFT address
+        address invalidOft = address(0x1234);
+        
+        // Build the bridge tx
+        BridgeTx memory bridgeTx = BridgeTx({
+            from: authorizer,
+            to: authorizer,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: 0
+        });
+        
+        // Generate signature
+        nonce = keccak256(abi.encode(bridgeTx));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: hop,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        Signature memory signature;
+        (signature.v, signature.r, signature.s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+        
+        vm.prank(sender);
+        vm.expectRevert(abi.encodeWithSignature("InvalidOFT()"));
+        HopV2(hop).sendFrxUsdWithAuthorization{ value: 1 ether }(invalidOft, bridgeTx, signature);
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_RevertWhen_InvalidSrcChain() public {
+        setUpArbitrum();
+        
+        // Build bridge tx with wrong srcEid
+        BridgeTx memory bridgeTx = BridgeTx({
+            from: authorizer,
+            to: authorizer,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: FRAXTAL_EID, // Wrong srcEid (Fraxtal instead of Arbitrum)
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: 0
+        });
+        
+        // Generate signature
+        nonce = keccak256(abi.encode(bridgeTx));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: hop,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        Signature memory signature;
+        (signature.v, signature.r, signature.s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+        
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        
+        vm.prank(sender);
+        vm.expectRevert(abi.encodeWithSignature("InvalidSrcChain()"));
+        HopV2(hop).sendFrxUsdWithAuthorization{ value: fee }(oft, bridgeTx, signature);
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_RevertWhen_InsufficientAmountAfterFees() public {
+        setUpArbitrum();
+        
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        uint256 feeInUsd = HopV2(hop).quoteInUsd(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        
+        // Calculate the expected amount after fees, then set minAmountLD above it
+        uint256 expectedAmountAfterFees = amount - feeInUsd;
+        
+        // Build bridge tx with minAmountLD higher than amount - fees (guaranteed to fail)
+        BridgeTx memory bridgeTx = BridgeTx({
+            from: authorizer,
+            to: authorizer,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: expectedAmountAfterFees + 1 // Guaranteed to exceed actual amount after fees
+        });
+        
+        // Generate signature
+        nonce = keccak256(abi.encode(bridgeTx));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: hop,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        Signature memory signature;
+        (signature.v, signature.r, signature.s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+        
+        vm.prank(sender);
+        vm.expectRevert(abi.encodeWithSignature("InsufficientAmountAfterFees()"));
+        HopV2(hop).sendFrxUsdWithAuthorization{ value: fee }(oft, bridgeTx, signature);
+    }
+
+    // ============ Edge Case Tests - Arbitrum ============
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_WithDifferentAmounts() public {
+        setUpArbitrum();
+        
+        uint256[] memory testAmounts = new uint256[](3);
+        testAmounts[0] = 1e18; // 1 frxUSD
+        testAmounts[1] = 1000e18; // 1000 frxUSD
+        testAmounts[2] = 10_000e18; // 10,000 frxUSD
+        
+        for (uint256 i = 0; i < testAmounts.length; i++) {
+            uint256 testAmount = testAmounts[i];
+            
+            // Fund authorizer with test amount
+            deal(frxUsd, authorizer, testAmount);
+            
+            // Build the bridge tx
+            BridgeTx memory bridgeTx = BridgeTx({
+                from: authorizer,
+                to: authorizer,
+                value: testAmount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                salt: generateSalt(i),
+                srcEid: srcEid,
+                dstEid: dstEid,
+                dstGas: 0,
+                data: "",
+                minAmountLD: 0
+            });
+            
+            // Generate signature
+            nonce = keccak256(abi.encode(bridgeTx));
+            SigUtils.Authorization memory authorization = SigUtils.Authorization({
+                from: authorizer,
+                to: hop,
+                value: testAmount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                nonce: nonce
+            });
+            Signature memory signature;
+            (signature.v, signature.r, signature.s) = vm.sign(
+                authorizerPrivateKey,
+                sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+            );
+            
+            uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), testAmount, 0, "");
+            
+            uint256 senderBalanceBefore = IERC20(frxUsd).balanceOf(sender);
+            
+            vm.prank(sender);
+            HopV2(hop).sendFrxUsdWithAuthorization{ value: fee }(oft, bridgeTx, signature);
+            
+            // Verify authorizer balance is 0
+            assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+            // Verify sender received fee
+            assertGt(IERC20(frxUsd).balanceOf(sender), senderBalanceBefore);
+        }
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_WithDifferentSalts() public {
+        setUpArbitrum();
+        
+        // Test that different salts allow multiple transactions from same authorizer
+        for (uint256 i = 0; i < 3; i++) {
+            // Fund authorizer for each iteration
+            deal(frxUsd, authorizer, amount);
+            
+            // Build the bridge tx with different salt
+            BridgeTx memory bridgeTx = BridgeTx({
+                from: authorizer,
+                to: authorizer,
+                value: amount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                salt: generateSalt(i),
+                srcEid: srcEid,
+                dstEid: dstEid,
+                dstGas: 0,
+                data: "",
+                minAmountLD: 0
+            });
+            
+            // Generate signature
+            nonce = keccak256(abi.encode(bridgeTx));
+            SigUtils.Authorization memory authorization = SigUtils.Authorization({
+                from: authorizer,
+                to: hop,
+                value: amount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                nonce: nonce
+            });
+            Signature memory signature;
+            (signature.v, signature.r, signature.s) = vm.sign(
+                authorizerPrivateKey,
+                sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+            );
+            
+            uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+            
+            vm.prank(sender);
+            HopV2(hop).sendFrxUsdWithAuthorization{ value: fee }(oft, bridgeTx, signature);
+            
+            // Verify balances
+            assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+        }
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_WithMinAmountLD() public {
+        setUpArbitrum();
+        
+        uint256 feeInUsd = HopV2(hop).quoteInUsd(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        uint256 expectedAmountAfterFees = amount - feeInUsd;
+        
+        // Calculate a safe minAmountLD value (90% of expected amount after fees)
+        // This tests that the transaction succeeds when minAmountLD is below the actual amount after fees
+        uint256 safeMinAmount = (expectedAmountAfterFees * 90) / 100;
+        
+        // Build bridge tx with minAmountLD just below expected amount
+        BridgeTx memory bridgeTx = BridgeTx({
+            from: authorizer,
+            to: authorizer,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: safeMinAmount
+        });
+        
+        // Generate signature
+        nonce = keccak256(abi.encode(bridgeTx));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: hop,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        Signature memory signature;
+        (signature.v, signature.r, signature.s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+        
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        
+        vm.prank(sender);
+        HopV2(hop).sendFrxUsdWithAuthorization{ value: fee }(oft, bridgeTx, signature);
+        
+        // Verify balances
+        assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+        assertGt(IERC20(frxUsd).balanceOf(sender), 0);
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_WithLargeData() public {
+        setUpArbitrum();
+        
+        // Create a large data payload efficiently using repeated pattern
+        bytes memory pattern = "test data pattern for cross-chain message";
+        bytes memory largeData = new bytes(1000);
+        for (uint256 i = 0; i < 1000; i++) {
+            largeData[i] = pattern[i % pattern.length];
+        }
+        
+        sendFrxUsdWithAuthorization(largeData);
+    }
+
+    function test_sendFrxUsdWithAuthorization_Arbitrum_FeeDistribution() public {
+        setUpArbitrum();
+        
+        uint256 senderBalanceBefore = IERC20(frxUsd).balanceOf(sender);
+        
+        sendFrxUsdWithAuthorization("");
+        
+        uint256 senderBalanceAfter = IERC20(frxUsd).balanceOf(sender);
+        uint256 feeReceived = senderBalanceAfter - senderBalanceBefore;
+        
+        // Verify sender received non-zero fee
+        assertGt(feeReceived, 0, "Sender should receive fee");
+        
+        // Verify authorizer has no remaining balance
+        assertEq(IERC20(frxUsd).balanceOf(authorizer), 0, "Authorizer should have no remaining balance");
     }
 
     function sendFrxUsdWithAuthorization(bytes memory _data) public {
