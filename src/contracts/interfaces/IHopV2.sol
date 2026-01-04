@@ -9,30 +9,23 @@ struct HopMessage {
     bytes data;
 }
 
-struct SignedAuthorization {
-    address from;
-    address to;
-    uint256 value;
-    uint256 validAfter;
-    uint256 validBefore;
-    bytes32 nonce;
+struct Signature {
     uint8 v;
     bytes32 r;
     bytes32 s;
 }
 
-struct SignedBridgeTx {
-    address authorizer;
-    address oft;
+struct BridgeTx {
+    address from;
+    address to;
+    uint256 value;
+    uint256 validAfter;
+    uint256 validBefore;
+    uint32 srcEid;
     uint32 dstEid;
-    bytes32 recipient;
     uint128 dstGas;
     bytes data;
     uint256 minAmountLD;
-    bytes32 nonce;
-    uint8 v;
-    bytes32 r;
-    bytes32 s;
 }
 
 interface IHopV2 {

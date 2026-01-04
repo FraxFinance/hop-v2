@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity 0.8.23;
 
 import { BaseScript } from "frax-std/BaseScript.sol";
 import { console } from "frax-std/BaseScript.sol";

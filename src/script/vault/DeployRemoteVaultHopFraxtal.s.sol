@@ -1,4 +1,4 @@
-pragma solidity 0.8.24;
+pragma solidity 0.8.23;
 
 import { DeployRemoteVaultHop } from "./DeployRemoteVaultHop.s.sol";
 
