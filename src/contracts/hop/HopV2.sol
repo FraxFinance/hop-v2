@@ -310,6 +310,17 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     }
 
     /// @notice Get the fee quote in USD for sending frxUSD via Hop
+    /// @dev This function converts the native gas fee to USD using a Chainlink price oracle.
+    ///      The returned USD amount has 18 decimals (same as frxUSD).
+    ///      The gas price oracle must be configured to enable this functionality.
+    /// @param _oft Address of OFT to send
+    /// @param _dstEid Destination EID
+    /// @param _recipient Address of recipient upon destination
+    /// @param _amountLD Amount to transfer (dust will be removed)
+    /// @param _dstGas Amount of gas to forward to the destination
+    /// @param _data Encoded data to pass to the destination
+    /// @return The bridge fee denominated in USD with 18 decimals (matching frxUSD decimals)
+    /// @custom:reverts GaslessTransfersNotSupported if the gas price oracle is not configured (address(0))
     function quoteInUsd(
         address _oft,
         uint32 _dstEid,
