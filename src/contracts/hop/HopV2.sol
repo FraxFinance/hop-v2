@@ -122,7 +122,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         if (!$.approvedOft[_oft]) revert InvalidOFT();
         address underlying = IOFT(_oft).token();
         // validate oft token is frxUSD
-        if (keccak256(abi.encodePacked(IERC20Metadata(underlying).symbol())) != keccak256(abi.encodePacked("frxUSD"))) {
+        if (bytes32(bytes(IERC20Metadata(underlying).symbol())) != bytes32("frxUSD")) {
             revert InvalidOFT();
         }
         // ensure bridge tx is originating from current chain to prevent replays on other chains
