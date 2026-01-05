@@ -112,6 +112,31 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
 
     // Public methods
 
+    /// @notice Bridge frxUSD to a destination chain using an ERC-3009 receiveWithAuthorization signature
+    /// @dev This function enables gasless bridging for the token holder. The caller (msg.sender) submits the
+    ///      transaction and receives the remaining frxUSD balance as payment for covering the gas costs. The fee
+    ///      is calculated in frxUSD based on the destination chain gas costs and is deducted from the bridged
+    ///      amount. The token holder signs a BridgeTx containing all bridge parameters, which is hashed to create
+    ///      the ERC-3009 nonce, preventing signature replay.
+    /// @param _oft Address of the frxUSD OFT contract to bridge through
+    /// @param _bridgeTx Bridge transaction parameters including:
+    ///        - from: Address of the token holder authorizing the transfer
+    ///        - recipient: bytes32 representation of the destination address
+    ///        - value: Amount of frxUSD to transfer (before fees)
+    ///        - validAfter: Timestamp after which the signature is valid
+    ///        - validBefore: Timestamp before which the signature is valid
+    ///        - salt: Used as part of the nonce to prevent replay (derived from hashing _bridgeTx)
+    ///        - srcEid: Source chain endpoint ID (must match current chain)
+    ///        - dstEid: Destination chain endpoint ID
+    ///        - dstGas: Gas limit for execution on destination chain
+    ///        - data: Optional encoded data for compose calls on destination
+    ///        - minAmountLD: Minimum amount that must be sent after fees, or transaction reverts
+    /// @param _signature ERC-3009 signature (v, r, s) from the token holder authorizing receiveWithAuthorization
+    /// @dev msg.sender must provide sufficient native token (msg.value) to cover LayerZero gas fees for the cross-chain message
+    /// @dev Reverts with HopPaused if the contract is paused
+    /// @dev Reverts with InvalidOFT if _oft is not an approved OFT or not frxUSD
+    /// @dev Reverts with InvalidSrcChain if _bridgeTx.srcEid doesn't match the current chain
+    /// @dev Reverts with InsufficientAmountAfterFees if amount after fee deduction is below _bridgeTx.minAmountLD
     function sendFrxUsdWithAuthorization(
         address _oft,
         BridgeTx memory _bridgeTx,
