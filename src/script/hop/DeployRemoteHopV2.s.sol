@@ -71,7 +71,7 @@ abstract contract DeployRemoteHopV2 is BaseScript {
         });
         console.log("RemoteHopV2 deployed at:", remoteHop);
 
-        address remoteAdmin = address(new RemoteAdmin(frxUsdOft, remoteHop, FRAXTAL_MSIG));
+        address remoteAdmin = address(new RemoteAdmin{ salt: bytes32(uint256(1)) }(frxUsdOft, remoteHop, FRAXTAL_MSIG));
         console.log("RemoteAdmin deployed at:", remoteAdmin);
 
         // grant Pauser roles to msig signers
@@ -139,7 +139,11 @@ function deployRemoteHopV2(
     );
 
     address implementation = address(new RemoteHopV2());
-    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy(implementation, _proxyAdmin, initializeArgs);
+    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{ salt: bytes32(uint256(1)) }(
+        implementation,
+        _proxyAdmin,
+        initializeArgs
+    );
 
     // set solana enforced options
     RemoteHopV2(payable(address(proxy))).setExecutorOptions(
