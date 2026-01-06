@@ -51,7 +51,6 @@ contract RemoteHopV2Test is FraxTest {
                 proxyAdmin,
                 ARBITRUM_EID,
                 ENDPOINT,
-                address(0),
                 OFTMsgCodec.addressToBytes32(fraxtalHop),
                 2,
                 EXECUTOR,

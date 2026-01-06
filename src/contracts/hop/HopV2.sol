@@ -10,12 +10,10 @@ import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTCom
 import { ILayerZeroDVN } from "src/contracts/interfaces/ILayerZeroDVN.sol";
 import { ILayerZeroTreasury } from "src/contracts/interfaces/ILayerZeroTreasury.sol";
 import { IExecutor } from "src/contracts/interfaces/IExecutor.sol";
-import { AggregatorV3Interface } from "src/contracts/interfaces/AggregatorV3Interface.sol";
-import { IERC3009 } from "src/contracts/interfaces/IERC3009.sol";
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { IHopV2, HopMessage, BridgeTx, Signature } from "src/contracts/interfaces/IHopV2.sol";
+import { IHopV2, HopMessage } from "src/contracts/interfaces/IHopV2.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
 contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
@@ -28,8 +26,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         uint32 localEid;
         /// @dev LZ endpoint on this chain
         address endpoint;
-        /// @dev Address of gas price oracle
-        address gasPriceOracle;
         /// @dev Admin-controlled boolean to pause hops
         bool paused;
         /// @dev Mapping to validate only trusted OFTs
@@ -70,9 +66,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     error NotAuthorized();
     error InsufficientFee();
     error RefundFailed();
-    error GaslessTransfersNotSupported();
-    error InsufficientAmountAfterFees();
-    error InvalidSrcChain();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -88,7 +81,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function __init_HopV2(
         uint32 _localEid,
         address _endpoint,
-        address _gasPriceOracle,
         uint32 _numDVNs,
         address _EXECUTOR,
         address _DVN,
@@ -100,7 +92,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         HopV2Storage storage $ = _getHopV2Storage();
         $.localEid = _localEid;
         $.endpoint = _endpoint;
-        $.gasPriceOracle = _gasPriceOracle;
         for (uint256 i = 0; i < _approvedOfts.length; i++) {
             $.approvedOft[_approvedOfts[i]] = true;
         }
@@ -111,100 +102,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     }
 
     // Public methods
-
-    /// @notice Bridge frxUSD to a destination chain using an ERC-3009 receiveWithAuthorization signature
-    /// @dev This function enables gasless bridging for the token holder. The caller (msg.sender) submits the
-    ///      transaction and receives the remaining frxUSD balance as payment for covering the gas costs. The fee
-    ///      is calculated in frxUSD based on the destination chain gas costs and is deducted from the bridged
-    ///      amount. The token holder signs a BridgeTx containing all bridge parameters, which is hashed to create
-    ///      the ERC-3009 nonce, preventing signature replay.
-    /// @param _oft Address of the frxUSD OFT contract to bridge through
-    /// @param _bridgeTx Bridge transaction parameters including:
-    ///        - from: Address of the token holder authorizing the transfer
-    ///        - recipient: bytes32 representation of the destination address
-    ///        - value: Amount of frxUSD to transfer (before fees)
-    ///        - validAfter: Timestamp after which the signature is valid
-    ///        - validBefore: Timestamp before which the signature is valid
-    ///        - salt: Used as part of the nonce to prevent replay (derived from hashing _bridgeTx)
-    ///        - srcEid: Source chain endpoint ID (must match current chain)
-    ///        - dstEid: Destination chain endpoint ID
-    ///        - dstGas: Gas limit for execution on destination chain
-    ///        - data: Optional encoded data for compose calls on destination
-    ///        - minAmountLD: Minimum amount that must be sent after fees, or transaction reverts
-    /// @param _signature ERC-3009 signature (v, r, s) from the token holder authorizing receiveWithAuthorization
-    /// @dev msg.sender must provide sufficient native token (msg.value) to cover LayerZero gas fees for the cross-chain message
-    /// @dev Reverts with HopPaused if the contract is paused
-    /// @dev Reverts with InvalidOFT if _oft is not an approved OFT or not frxUSD
-    /// @dev Reverts with InvalidSrcChain if _bridgeTx.srcEid doesn't match the current chain
-    /// @dev Reverts with InsufficientAmountAfterFees if amount after fee deduction is below _bridgeTx.minAmountLD
-    function sendFrxUsdWithAuthorization(
-        address _oft,
-        BridgeTx memory _bridgeTx,
-        Signature memory _signature
-    ) external payable {
-        HopV2Storage storage $ = _getHopV2Storage();
-        if ($.paused) revert HopPaused();
-        if (!$.approvedOft[_oft]) revert InvalidOFT();
-        address underlying = IOFT(_oft).token();
-        // validate oft token is frxUSD
-        if (bytes32(bytes(IERC20Metadata(underlying).symbol())) != bytes32("frxUSD")) {
-            revert InvalidOFT();
-        }
-        // ensure bridge tx is originating from current chain to prevent replays on other chains
-        if (_bridgeTx.srcEid != $.localEid) {
-            revert InvalidSrcChain();
-        }
-
-        // generate hop message
-        HopMessage memory hopMessage = HopMessage({
-            srcEid: $.localEid,
-            dstEid: _bridgeTx.dstEid,
-            dstGas: _bridgeTx.dstGas,
-            sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _bridgeTx.recipient,
-            data: _bridgeTx.data
-        });
-
-        // receive frxUSD with authorization
-        _handleReceiveWithAuthorization(underlying, _bridgeTx, _signature);
-
-        // calculate fee in frxUSD
-        uint256 feeInUsd = quoteInUsd(
-            _oft,
-            _bridgeTx.dstEid,
-            _bridgeTx.recipient,
-            _bridgeTx.value,
-            _bridgeTx.dstGas,
-            _bridgeTx.data
-        );
-
-        // subtract fee from amount and clean up dust
-        uint256 amountLD = removeDust(_oft, _bridgeTx.value - feeInUsd);
-        if (amountLD < _bridgeTx.minAmountLD) {
-            revert InsufficientAmountAfterFees();
-        }
-
-        // send with amount less fees
-        uint256 sendFee;
-        if (_bridgeTx.dstEid == $.localEid) {
-            _sendLocal({ _oft: _oft, _amount: amountLD, _hopMessage: hopMessage });
-        } else {
-            sendFee = _sendToDestination({
-                _oft: _oft,
-                _amountLD: amountLD,
-                _isTrustedHopMessage: true,
-                _hopMessage: hopMessage
-            });
-        }
-
-        // validate the msg.value
-        _handleMsgValue(sendFee);
-
-        // give the remaining balance of frxUSD back to the caller as the fee
-        IERC20(underlying).transfer(msg.sender, IERC20(underlying).balanceOf(address(this)));
-
-        emit SendOFT(_oft, _bridgeTx.from, _bridgeTx.dstEid, _bridgeTx.recipient, amountLD);
-    }
 
     /// @notice Send an OFT to a destination without encoded data
     /// @param _oft Address of OFT
@@ -309,38 +206,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         return fee.nativeFee + hopFeeOnFraxtal;
     }
 
-    /// @notice Get the fee quote in USD for sending frxUSD via Hop
-    /// @dev This function converts the native gas fee to USD using a Chainlink price oracle.
-    ///      The returned USD amount has 18 decimals (same as frxUSD).
-    ///      The gas price oracle must be configured to enable this functionality.
-    /// @param _oft Address of OFT to send
-    /// @param _dstEid Destination EID
-    /// @param _recipient Address of recipient upon destination
-    /// @param _amountLD Amount to transfer (dust will be removed)
-    /// @param _dstGas Amount of gas to forward to the destination
-    /// @param _data Encoded data to pass to the destination
-    /// @return The bridge fee denominated in USD with 18 decimals (matching frxUSD decimals)
-    /// @custom:reverts GaslessTransfersNotSupported if the gas price oracle is not configured (address(0))
-    function quoteInUsd(
-        address _oft,
-        uint32 _dstEid,
-        bytes32 _recipient,
-        uint256 _amountLD,
-        uint128 _dstGas,
-        bytes memory _data
-    ) public view returns (uint256) {
-        uint256 feeInGas = quote(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
-
-        HopV2Storage storage $ = _getHopV2Storage();
-        if ($.gasPriceOracle == address(0)) revert GaslessTransfersNotSupported();
-
-        (, int256 gasPrice, , , ) = AggregatorV3Interface($.gasPriceOracle).latestRoundData();
-        uint8 gasPriceDecimals = AggregatorV3Interface($.gasPriceOracle).decimals();
-        uint256 feeInUsd = (feeInGas * uint256(gasPrice)) / (10 ** gasPriceDecimals);
-
-        return feeInUsd;
-    }
-
     /// @notice Get a gas cost estimate of executing a hop on Fraxtal to a destination chain
     /// @param _dstEid Destination EID
     /// @param _dstGas Amount of gas to forward to the destination
@@ -373,26 +238,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     }
 
     // internal methods
-
-    /// @dev helper to avoid stack too deep
-    function _handleReceiveWithAuthorization(
-        address _underlying,
-        BridgeTx memory _bridgeTx,
-        Signature memory _signature
-    ) internal {
-        bytes32 nonce = keccak256(abi.encode(_bridgeTx));
-        IERC3009(_underlying).receiveWithAuthorization(
-            _bridgeTx.from,
-            address(this),
-            _bridgeTx.value,
-            _bridgeTx.validAfter,
-            _bridgeTx.validBefore,
-            nonce,
-            _signature.v,
-            _signature.r,
-            _signature.s
-        );
-    }
 
     /// @dev Send the OFT and execute hopCompose on this chain (locally)
     function _sendLocal(address _oft, uint256 _amount, HopMessage memory _hopMessage) internal {
@@ -503,11 +348,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         $.paused = false;
     }
 
-    function setGasPriceOracle(address _gasPriceOracle) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        HopV2Storage storage $ = _getHopV2Storage();
-        $.gasPriceOracle = _gasPriceOracle;
-    }
-
     function setApprovedOft(address _oft, bool _isApproved) external onlyRole(DEFAULT_ADMIN_ROLE) {
         HopV2Storage storage $ = _getHopV2Storage();
         $.approvedOft[_oft] = _isApproved;
@@ -568,11 +408,6 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function endpoint() external view returns (address) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.endpoint;
-    }
-
-    function gasPriceOracle() external view returns (address) {
-        HopV2Storage storage $ = _getHopV2Storage();
-        return $.gasPriceOracle;
     }
 
     function paused() public view returns (bool) {

@@ -63,7 +63,7 @@ contract HopV2IntegrationTest is FraxTest {
 
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
         fraxtalHop = FraxtalHopV2(
-            deployFraxtalHopV2(proxyAdmin, FRAXTAL_EID, ENDPOINT, address(0), 3, EXECUTOR, DVN, TREASURY, fraxtalOfts)
+            deployFraxtalHopV2(proxyAdmin, FRAXTAL_EID, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, fraxtalOfts)
         );
 
         payable(address(fraxtalHop)).call{ value: 100 ether }("");
@@ -79,7 +79,6 @@ contract HopV2IntegrationTest is FraxTest {
                 proxyAdmin,
                 ARBITRUM_EID,
                 ENDPOINT,
-                address(0),
                 OFTMsgCodec.addressToBytes32(address(0x123)), // Placeholder
                 2,
                 ARB_EXECUTOR,
