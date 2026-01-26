@@ -33,6 +33,7 @@ abstract contract DeployRemoteHopV2 is BaseScript {
 
     address proxyAdmin;
     address endpoint;
+    address gasPriceOracle;
     uint32 localEid;
 
     address EXECUTOR;
