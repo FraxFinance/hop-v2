@@ -18,11 +18,11 @@ libs = ['lib', 'node_modules']
 # Whether or not to enable `vm.ffi`
 ffi = false
 # Enables or disables the optimizer
-optimizer = false
+optimizer = true
 # The number of optimizer runs
 optimizer_runs = 200 
 # use the via-ir compiler flag
-via_ir = false
+via_ir = true
 # include metadata hash in bytecode
 bytecode_hash = "none"
 # Whether to append the metadata hash to the bytecode
@@ -54,11 +54,13 @@ via_ir = true
 [profile.test]
 src = "_"
 script = "_"
-optimizer = false
+optimizer = true
+optimizer_runs = 200
 build_info = false
 extra_output = []
 verbosity = 3
-via_ir = false
+via_ir = true
+evm_version = "cancun"
 
 [fmt]
 line_length = 1000 # This gets overriden by prettier afterwards
