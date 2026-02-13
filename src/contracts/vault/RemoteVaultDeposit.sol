@@ -56,6 +56,9 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
     /// @notice Only the RemoteVault contract can mint/burn tokens
     error OnlyRemoteVault();
 
+    /// @notice Refund failed
+    error RefundFailed();
+
     /// @notice Emitted when tokens are minted
     event Mint(address indexed to, uint256 amount);
 
@@ -149,15 +152,15 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
         RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
 
         SafeERC20.safeTransferFrom(IERC20($.ASSET), msg.sender, address($.REMOTE_VAULT_HOP), _amount);
-        RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).deposit{ value: msg.value }(
+        uint256 fee = RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).deposit{ value: msg.value }(
             _amount,
             $.VAULT_CHAIN_ID,
             $.VAULT_ADDRESS,
             _to
         );
-        if (address(this).balance > 0) {
-            (bool success, ) = msg.sender.call{ value: address(this).balance }("");
-            require(success, "Refund failed");
+        if (msg.value > fee) {
+            (bool success, ) = msg.sender.call{ value: msg.value - fee }("");
+            if (!success) revert RefundFailed();
         }
     }
 
@@ -171,15 +174,15 @@ contract RemoteVaultDeposit is ERC20Upgradeable, OwnableUpgradeable {
 
         RemoteVaultDepositStorage storage $ = _getRemoteVaultDepositStorage();
 
-        RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).redeem{ value: msg.value }(
+        uint256 fee = RemoteVaultHop(payable($.REMOTE_VAULT_HOP)).redeem{ value: msg.value }(
             _amount,
             $.VAULT_CHAIN_ID,
             $.VAULT_ADDRESS,
             _to
         );
-        if (address(this).balance > 0) {
-            (bool success, ) = msg.sender.call{ value: address(this).balance }("");
-            require(success, "Refund failed");
+        if (msg.value > fee) {
+            (bool success, ) = msg.sender.call{ value: msg.value - fee }("");
+            if (!success) revert RefundFailed();
         }
     }
 

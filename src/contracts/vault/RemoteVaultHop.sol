@@ -128,7 +128,12 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
     /// @notice Receive ETH payments
     receive() external payable {}
 
-    function deposit(uint256 _amount, uint32 _remoteEid, address _remoteVault, address _to) external payable {
+    function deposit(
+        uint256 _amount,
+        uint32 _remoteEid,
+        address _remoteVault,
+        address _to
+    ) external payable returns (uint256) {
         RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
 
         if ($.remoteVaultHops[_remoteEid] == address(0)) revert InvalidChain();
@@ -166,9 +171,16 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
             if (!success) revert RefundFailed();
         }
         emit Deposit(_to, _remoteEid, _remoteVault, _amount);
+
+        return fee;
     }
 
-    function redeem(uint256 _amount, uint32 _remoteEid, address _remoteVault, address _to) external payable {
+    function redeem(
+        uint256 _amount,
+        uint32 _remoteEid,
+        address _remoteVault,
+        address _to
+    ) external payable returns (uint256) {
         RemoteVaultHopStorage storage $ = _getRemoteVaultHopStorage();
 
         if ($.remoteVaultHops[_remoteEid] == address(0)) revert InvalidChain();
@@ -202,6 +214,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
             if (!success) revert RefundFailed();
         }
         emit Redeem(_to, _remoteEid, _remoteVault, _amount);
+        return fee;
     }
 
     /// @notice Quotes the cost to hop to a remote vault and back.  This can be either through:
