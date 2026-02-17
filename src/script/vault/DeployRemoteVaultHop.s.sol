@@ -3,6 +3,7 @@ pragma solidity 0.8.23;
 import { BaseScript } from "frax-std/BaseScript.sol";
 import { console } from "frax-std/BaseScript.sol";
 import { RemoteVaultHop } from "src/contracts/vault/RemoteVaultHop.sol";
+import { RemoteVaultDeposit } from "src/contracts/vault/RemoteVaultDeposit.sol";
 import { FraxUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
 
 abstract contract DeployRemoteVaultHop is BaseScript {
@@ -13,10 +14,13 @@ abstract contract DeployRemoteVaultHop is BaseScript {
     address proxyAdmin;
     address msig;
 
-    function run() public broadcaster {
+    function run() public {
+        vm.startBroadcast();
+
+        address rvdImplementation = address(new RemoteVaultDeposit());
         bytes memory initializeArgs = abi.encodeCall(
             RemoteVaultHop.initialize,
-            (frxUSD, frxUsdOft, HOPV2, EID, proxyAdmin)
+            (frxUSD, frxUsdOft, HOPV2, EID, proxyAdmin, rvdImplementation)
         );
         address implementation = address(new RemoteVaultHop());
         FraxUpgradeableProxy vaultHopProxy = new FraxUpgradeableProxy(implementation, proxyAdmin, initializeArgs);
@@ -42,6 +46,8 @@ abstract contract DeployRemoteVaultHop is BaseScript {
         // grant DEFAULT_ADMIN_ROLE to msig and renounce
         bytes32 DEFAULT_ADMIN_ROLE = 0x00;
         vaultHop.grantRole(DEFAULT_ADMIN_ROLE, msig);
-        vaultHop.renounceRole(DEFAULT_ADMIN_ROLE, vm.addr(privateKey));
+        vaultHop.renounceRole(DEFAULT_ADMIN_ROLE, msg.sender);
+
+        vm.stopBroadcast();
     }
 }

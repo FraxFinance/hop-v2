@@ -26,7 +26,11 @@ contract RemoteVaultHopTest is FraxTest {
         hop = 0x22beDD55A0D29Eb31e75C70F54fADa7Ca94339B9;
         eid = 30_184;
 
-        bytes memory initializeArgs = abi.encodeCall(RemoteVaultHop.initialize, (frxUSD, oft, hop, eid, address(1)));
+        address rvdImpl = address(new RemoteVaultDeposit());
+        bytes memory initializeArgs = abi.encodeCall(
+            RemoteVaultHop.initialize,
+            (frxUSD, oft, hop, eid, address(1), rvdImpl)
+        );
         address implementation = address(new RemoteVaultHop());
         FraxUpgradeableProxy vaultHopProxy = new FraxUpgradeableProxy(implementation, address(1), initializeArgs);
         remoteVaultHop = RemoteVaultHop(payable(address(vaultHopProxy)));
@@ -55,7 +59,7 @@ contract RemoteVaultHopTest is FraxTest {
 
     function test_CannotReinitialize() public {
         vm.expectRevert();
-        remoteVaultHop.initialize(frxUSD, oft, hop, eid, address(1));
+        remoteVaultHop.initialize(frxUSD, oft, hop, eid, address(1), address(1));
     }
 
     // ============ Remote Vault Management Tests ============

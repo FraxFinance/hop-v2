@@ -23,9 +23,10 @@ contract RemoteVaultTest is FraxTest {
         oft = frxUSD;
         hop = 0x22beDD55A0D29Eb31e75C70F54fADa7Ca94339B9;
         uint32 eid = 30_184;
+        address rvdImpl = address(new RemoteVaultDeposit());
         bytes memory initializeArgs = abi.encodeCall(
             RemoteVaultHop.initialize,
-            (frxUSD, oft, hop, eid, address(1)) // proxyAdmin
+            (frxUSD, oft, hop, eid, address(1), rvdImpl) // proxyAdmin
         );
         address implementation = address(new RemoteVaultHop());
         FraxUpgradeableProxy vaultHopProxy = new FraxUpgradeableProxy(
@@ -50,9 +51,10 @@ contract RemoteVaultTest is FraxTest {
         oft = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
         hop = 0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536;
         uint32 eid = 30_255;
+        address rvdImpl = address(new RemoteVaultDeposit());
         bytes memory initializeArgs = abi.encodeCall(
             RemoteVaultHop.initialize,
-            (frxUSD, oft, hop, eid, address(1)) // proxyAdmin
+            (frxUSD, oft, hop, eid, address(1), rvdImpl) // proxyAdmin
         );
         address implementation = address(new RemoteVaultHop());
         FraxUpgradeableProxy vaultHopProxy = new FraxUpgradeableProxy(
@@ -88,7 +90,7 @@ contract RemoteVaultTest is FraxTest {
             userAddress: address(this),
             remoteEid: 30_255,
             remoteVault: 0x8EdA613EC96992D3C42BCd9aC2Ae58a92929Ceb2,
-            amount: 8.854_586_006_784_134_54e18,
+            amount: 8.85458600678413454e18,
             remoteTimestamp: 1_759_756_961,
             pricePerShare: 885_458_600_678_000_000
         });

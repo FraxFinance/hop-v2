@@ -27,7 +27,11 @@ contract RemoteVaultDepositTest is FraxTest {
         address hop = 0x22beDD55A0D29Eb31e75C70F54fADa7Ca94339B9;
         uint32 eid = 30_184;
 
-        bytes memory initializeArgs = abi.encodeCall(RemoteVaultHop.initialize, (frxUSD, oft, hop, eid, address(1)));
+        address rvdImpl = address(new RemoteVaultDeposit());
+        bytes memory initializeArgs = abi.encodeCall(
+            RemoteVaultHop.initialize,
+            (frxUSD, oft, hop, eid, address(1), rvdImpl)
+        );
         address implementation = address(new RemoteVaultHop());
         FraxUpgradeableProxy vaultHopProxy = new FraxUpgradeableProxy(implementation, address(1), initializeArgs);
         remoteVaultHop = RemoteVaultHop(payable(address(vaultHopProxy)));
@@ -53,7 +57,7 @@ contract RemoteVaultDepositTest is FraxTest {
 
     function test_CannotReinitialize() public {
         vm.expectRevert();
-        vaultDeposit.initialize(VAULT_CHAIN_ID, VAULT_ADDRESS, ASSET, "New Name", "NEW", 18);
+        vaultDeposit.initialize(VAULT_CHAIN_ID, VAULT_ADDRESS, ASSET, 1, "New Name", "NEW", 18);
     }
 
     // ============ Minting Tests ============
@@ -253,7 +257,7 @@ contract RemoteVaultDepositTest is FraxTest {
         IERC20(frxUSD).approve(address(vaultDeposit), depositAmount);
         vaultDeposit.deposit{ value: 1e18 }(depositAmount, address(this));
 
-        // Check that the dust remains in the remoteVaultHop
-        assertEq(IERC20(frxUSD).balanceOf(address(remoteVaultHop)), 1234, "Dust should remain in the hop");
+        // Check that the dust remains in sender balance
+        assertEq(IERC20(frxUSD).balanceOf(address(this)), 1234, "Dust should remain in sender balance");
     }
 }

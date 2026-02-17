@@ -109,7 +109,8 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         address _oft,
         address _hop,
         uint32 _eid,
-        address _proxyAdmin
+        address _proxyAdmin,
+        address _implementation
     ) external initializer {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
@@ -122,7 +123,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
 
         $.proxyAdmin = _proxyAdmin;
 
-        $.implementation = address(new RemoteVaultDeposit());
+        $.implementation = _implementation;
     }
 
     /// @notice Receive ETH payments
@@ -404,7 +405,10 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         FraxUpgradeableProxy proxy = new FraxUpgradeableProxy(
             address($.implementation),
             $.proxyAdmin,
-            abi.encodeCall(RemoteVaultDeposit.initialize, (_eid, _vault, address($.TOKEN), name, symbol, decimals))
+            abi.encodeCall(
+                RemoteVaultDeposit.initialize,
+                (_eid, _vault, address($.TOKEN), $.DECIMAL_CONVERSION_RATE, name, symbol, decimals)
+            )
         );
         $.depositToken[_eid][_vault] = RemoteVaultDeposit(payable(address(proxy)));
         emit RemoteVaultAdded(_eid, _vault, name, symbol);
