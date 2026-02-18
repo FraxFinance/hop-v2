@@ -111,7 +111,7 @@ The RemoteVaultHop system enables users to deposit into and redeem from ERC-4626
 ### HopV2 Mainnet
 | Chain | `Hop` | `RemoteAdmin` |
 | --- | --- | --- |
-| Fraxtal | [`0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536`](https://fraxscan.com/address/0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536) | [`0xDC3369C18Ff9C077B803C98b6260a186aDE9A426`](https://fraxscan.com/address/0xDC3369C18Ff9C077B803C98b6260a186aDE9A426) |
+| Fraxtal | [`0x00000000e18aFc20Afe54d4B2C8688bB60c06B36`](https://fraxscan.com/address/0x00000000e18aFc20Afe54d4B2C8688bB60c06B36) | [`0x34029e02821178B4387e12644896994f910D6E73`](https://fraxscan.com/address/0x34029e02821178B4387e12644896994f910D6E73) |
 | Arbitrum | [`0xf307Ad241E1035062Ed11F444740f108B8D036a6`](https://arbiscan.io/address/0xf307Ad241E1035062Ed11F444740f108B8D036a6) | [`0x03047fA366900b4cBf5E8F9FEEce97553f20370e`](https://arbiscan.io/address/0x03047fA366900b4cBf5E8F9FEEce97553f20370e) |
 | Base | [`0x7C5004F64F86728b5d852CeEc7987333114b206d`](https://basescan.org/address/0x7C5004F64F86728b5d852CeEc7987333114b206d) | [`0x68E986Ac0409bf59E08bF417D2c160a5d4598e41`](https://basescan.org/address/0x68E986Ac0409bf59E08bF417D2c160a5d4598e41) |
 | Ethereum | [`0xFd3B410b82a00B2651b42A13837204c5e3D92e27`](https://etherscan.io/address/0xFd3B410b82a00B2651b42A13837204c5e3D92e27) | [`0xa2db46c06e0B643A926ef60d1fEB744A7385a593`](https://etherscan.io/address/0xa2db46c06e0B643A926ef60d1fEB744A7385a593) |

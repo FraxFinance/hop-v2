@@ -29,6 +29,7 @@ bytecode_hash = "none"
 cbor_metadata = false
 # Contracts to track with --gas-report
 #gas_reports = [] 
+evm_version = "paris"
 
 [fuzz]
 # Amount of runs per fuzz test

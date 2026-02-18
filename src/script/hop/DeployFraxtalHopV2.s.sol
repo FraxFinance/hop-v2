@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.23;
 
-import { BaseScript } from "frax-std/BaseScript.sol";
-import { console } from "frax-std/BaseScript.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/Script.sol";
 import { FraxtalHopV2 } from "src/contracts/hop/FraxtalHopV2.sol";
 import { HopV2 } from "src/contracts/hop/HopV2.sol";
 import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
 
-import { FraxUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
+import { FraxUpgradeableProxy, ITransparentUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
 
 // forge script src/script/hop/DeployFraxtalHopV2.s.sol --rpc-url https://rpc.frax.com --broadcast --verify --verifier etherscan --etherscan-api-key $TODO
-contract DeployFraxtalHopV2 is BaseScript {
+contract DeployFraxtalHopV2 is Script {
     address constant proxyAdmin = 0x223a681fc5c5522c85C96157c0efA18cd6c5405c;
     address constant msig = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
 
@@ -26,13 +26,15 @@ contract DeployFraxtalHopV2 is BaseScript {
     address constant DVN = 0xcCE466a522984415bC91338c232d98869193D46e;
     address constant TREASURY = 0xc1B621b18187F74c8F6D52a6F709Dd2780C09821;
 
-    function run() public broadcaster {
+    function run() public {
         approvedOfts.push(frxUsdLockbox);
         approvedOfts.push(sfrxUsdLockbox);
         approvedOfts.push(frxEthLockbox);
         approvedOfts.push(sfrxEthLockbox);
         approvedOfts.push(fxsLockbox);
         approvedOfts.push(fpiLockbox);
+
+        vm.startBroadcast();
 
         address hop = deployFraxtalHopV2(
             proxyAdmin,
@@ -53,7 +55,7 @@ contract DeployFraxtalHopV2 is BaseScript {
         bytes32 PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
 
         // carter
-        HopV2(hop).grantRole(PAUSER_ROLE, 0x13Fe84D36d7a507Bb4bdAC6dCaF13a10961fc470);
+        HopV2(hop).grantRole(PAUSER_ROLE, 0x54C5Ef136D02b95C4Ff217aF93FA63F9E4119919);
         // sam
         HopV2(hop).grantRole(PAUSER_ROLE, 0x17e06ce6914E3969f7BD37D8b2a563890cA1c96e);
         // dhruvin
@@ -70,7 +72,9 @@ contract DeployFraxtalHopV2 is BaseScript {
         // transfer admin role to fraxtal msig & RemoteAdmin and renounce from deployer
         HopV2(hop).grantRole(bytes32(0), msig);
         HopV2(hop).grantRole(bytes32(0), remoteAdmin);
-        HopV2(hop).renounceRole(bytes32(0), vm.addr(privateKey));
+        HopV2(hop).renounceRole(bytes32(0), msg.sender);
+
+        vm.stopBroadcast();
     }
 }
 
@@ -89,7 +93,17 @@ function deployFraxtalHopV2(
         (_LOCALEID, _endpoint, _NUMDVN, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
     );
 
-    address implementation = address(new FraxtalHopV2());
-    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy(implementation, _proxyAdmin, initializeArgs);
+    //
+    address implementation = address(
+        new FraxtalHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c91747cf1b91c32641c050060) }()
+    );
+    require(implementation == 0x1E92C54DccA30015ca00a1e19500004600003f02, "Implementation deployment failed");
+    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
+        salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c7f4c78212c484a739f030080)
+    }(implementation, msg.sender, "");
+    require(address(proxy) == 0x00000000e18aFc20Afe54d4B2C8688bB60c06B36, "Proxy deployment failed");
+
+    ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(implementation, initializeArgs);
+    ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
     return payable(address(proxy));
 }
