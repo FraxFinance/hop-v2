@@ -74,6 +74,7 @@ polygon = "${POLYGON_RPC_URL}"
 fraxtal = "${FRAXTAL_RPC_URL}"
 fraxtal_testnet = "${FRAXTAL_TESTNET_RPC_URL}"
 base = "https://mainnet.base.org"
+monad = "https://rpc.monad.xyz"
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}", url = "${ETHERSCAN_API_URL}" }
@@ -81,3 +82,5 @@ polygon = { key = "${POLYGONSCAN_API_KEY}", url = "${POLYGONSCAN_API_URL}" }
 fraxtal = { key = "${FRAXSCAN_API_KEY}", url = "${FRAXSCAN_API_URL}", chain=252 }
 fraxtal_testnet = { key = "${FRAXSCAN_API_KEY}", url = "${FRAXSCAN_TESTNET_API_URL}", chain=2522 }
 base = { key = "${ETHERSCAN_API_KEY}", url = "https://api.basescan.org/api", chain=8453 }
+monad = { key = "${ETHERSCAN_API_KEY}", url = "https://api.etherscan.io/v2/api?chainid=143" }
+stable = { key = "verifyContract", url = "https://api.stablescan.xyz/api", chain = 988 }
