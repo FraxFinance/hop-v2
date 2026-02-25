@@ -1,13 +1,13 @@
 pragma solidity 0.8.23;
 
-import { BaseScript } from "frax-std/BaseScript.sol";
-import { console } from "frax-std/BaseScript.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/Script.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
-import { FraxUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
+import { FraxUpgradeableProxy, ITransparentUpgradeableProxy } from "frax-std/FraxUpgradeableProxy.sol";
 
 interface IExecutor {
     function endpoint() external view returns (address);
@@ -27,8 +27,8 @@ interface IOFT {
     function token() external view returns (address);
 }
 
-abstract contract DeployRemoteHopV2 is BaseScript {
-    address constant FRAXTAL_HOP = 0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536;
+abstract contract DeployRemoteHopV2 is Script {
+    address constant FRAXTAL_HOP = 0x00000000e18aFc20Afe54d4B2C8688bB60c06B36;
     address constant FRAXTAL_MSIG = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
 
     address proxyAdmin;
@@ -48,8 +48,10 @@ abstract contract DeployRemoteHopV2 is BaseScript {
     address fpiOft;
     address[] approvedOfts;
 
-    function run() public broadcaster {
+    function run() public {
         _validateAddrs();
+
+        vm.startBroadcast();
 
         approvedOfts.push(frxUsdOft);
         approvedOfts.push(sfrxUsdOft);
@@ -78,7 +80,7 @@ abstract contract DeployRemoteHopV2 is BaseScript {
         bytes32 PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
 
         // carter
-        RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x13Fe84D36d7a507Bb4bdAC6dCaF13a10961fc470);
+        RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x54C5Ef136D02b95C4Ff217aF93FA63F9E4119919);
         // sam
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x17e06ce6914E3969f7BD37D8b2a563890cA1c96e);
         // dhruvin
@@ -95,7 +97,9 @@ abstract contract DeployRemoteHopV2 is BaseScript {
         // transfer admin role to msig & RemoteAdmin and renounce from deployer
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), msig);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), remoteAdmin);
-        RemoteHopV2(payable(remoteHop)).renounceRole(bytes32(0), vm.addr(privateKey));
+        RemoteHopV2(payable(remoteHop)).renounceRole(bytes32(0), msg.sender);
+
+        vm.stopBroadcast();
     }
 
     function _validateAddrs() internal view {
@@ -103,7 +107,9 @@ abstract contract DeployRemoteHopV2 is BaseScript {
         require(major == 3 && minor == 0 && endpointVersion == 2, "Invalid SendLibrary version");
 
         require(IExecutor(EXECUTOR).endpoint() == endpoint, "Invalid executor endpoint");
-        require(IExecutor(EXECUTOR).localEidV2() == localEid, "Invalid executor localEidV2");
+        try IExecutor(EXECUTOR).localEidV2() returns (uint32 eid) {
+            require(eid == localEid, "Invalid executor localEidV2");
+        } catch {}
         require(IDVN(DVN).vid() != 0, "Invalid DVN vid");
 
         require(msig != address(0), "msig is not set");
@@ -138,12 +144,32 @@ function deployRemoteHopV2(
         (_localEid, _endpoint, _fraxtalHop, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
     );
 
-    address implementation = address(new RemoteHopV2());
-    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{ salt: bytes32(uint256(1)) }(
+    // @dev: for paris
+    /*
+    address implementation = address(new RemoteHopV2{salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c2791269a18c599f416240000) }());
+    require(implementation == 0x00000000115aFDdC31Ecf21723EB657f3457B419, "Implementation address mismatch");
+
+    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cab19add5db38737da0030080) }(
         implementation,
-        _proxyAdmin,
-        initializeArgs
+        msg.sender,
+        ""
     );
+    require(address(proxy) == 0x000000004388B53172053d6a45B9B34B3A98A3C3, "Proxy address mismatch");
+    */
+
+    // @dev: for cancun
+    address implementation = address(
+        new RemoteHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c9354ec210d62dd5b592000c0) }()
+    );
+    require(implementation == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "Implementation address mismatch");
+
+    FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
+        salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cf4079e3d6eda7a014e9e0040)
+    }(implementation, msg.sender, "");
+    require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
+
+    ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(implementation, initializeArgs);
+    ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
 
     // set solana enforced options
     RemoteHopV2(payable(address(proxy))).setExecutorOptions(
