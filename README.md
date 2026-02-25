@@ -1485,7 +1485,7 @@ console.log(`Bridge fee: ${ethers.formatEther(fee)} ETH`);
 const composerAddress = "0xComposerOnBase";
 const composerData = ethers.AbiCoder.defaultAbiCoder().encode(
   ["address"],
-  ["0xBeneficiary"]
+  ["0xBeneficiary"]z
 );
 const feeWithCompose = await remoteHop.quote(
   frxUSD_ARB,
@@ -1514,13 +1514,17 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | Katana | [`0x0000006D38568b00B457580b734e0076C62de659`](https://katanascan.com/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://katanascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Mode | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.mode.network/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.mode.network/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Optimism | [`0x0000006D38568b00B457580b734e0076C62de659`](https://optimistic.etherscan.io/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://optimistic.etherscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Plume | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.plume.org/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.plume.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Polygon | [`0x0000006D38568b00B457580b734e0076C62de659`](https://polygonscan.com/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://polygonscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Sei | [`0x0000006D38568b00B457580b734e0076C62de659`](https://seiscan.io/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://seiscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Sonic | [`0x0000006D38568b00B457580b734e0076C62de659`](https://sonicscan.org/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://sonicscan.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Stable | [`0x0000006D38568b00B457580b734e0076C62de659`](https://stablescan.xyz/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://stablescan.xyz/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Unichain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://uniscan.xyz/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://uniscan.xyz/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Worldchain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://worldscan.org/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://worldscan.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Base | [`0x0000006D38568b00B457580b734e0076C62de659`](https://basescan.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x07dB789aD17573e5169eDEfe14df91CC305715AA`](https://basescan.org/address/0x07dB789aD17573e5169eDEfe14df91CC305715AA) |
 | Ethereum | [`0x0000006D38568b00B457580b734e0076C62de659`](https://etherscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa`](https://etherscan.io/address/0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa) |
 | Linea | [`0x0000006D38568b00B457580b734e0076C62de659`](https://lineascan.build/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xfa803b63DaACCa6CD953061BDBa4E3da6b177447`](https://lineascan.build/address/0xfa803b63DaACCa6CD953061BDBa4E3da6b177447) |
+| Monad | [`0x0000006D38568b00B457580b734e0076C62de659`](https://monadscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55`](https://monadscan.com/address/0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55) |
 | Scroll | [`0x0000006D38568b00B457580b734e0076C62de659`](https://scrollscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01`](https://lineascan.build/address/0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01) |
 | Fraxtal | [`0x00000000e18aFc20Afe54d4B2C8688bB60c06B36`](https://fraxscan.com/address/0x00000000e18aFc20Afe54d4B2C8688bB60c06B36) | [`0x34029e02821178B4387e12644896994f910D6E73`](https://fraxscan.com/address/0x34029e02821178B4387e12644896994f910D6E73) |
 
