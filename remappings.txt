@@ -1,4 +1,9 @@
 frax-std/=node_modules/frax-standard-solidity/src/
 @prb/test/=node_modules/@prb/test/
 forge-std/=node_modules/forge-std/src/
+@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
+@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/
+@openzeppelin/contracts-4.8.1/=node_modules/@openzeppelin/contracts-4.8.1/
+@openzeppelin/contracts-upgradeable-4.8.1/=node_modules/@openzeppelin/contracts-upgradeable-4.8.1/
+@fraxfinance/layerzero-v2-upgradeable/=node_modules/@fraxfinance/layerzero-v2-upgradeable/
 ds-test/=node_modules/ds-test/src/
