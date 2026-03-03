@@ -1525,7 +1525,7 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | Fraxtal | [`0x00000000e18aFc20Afe54d4B2C8688bB60c06B36`](https://fraxscan.com/address/0x00000000e18aFc20Afe54d4B2C8688bB60c06B36) | [`0x34029e02821178B4387e12644896994f910D6E73`](https://fraxscan.com/address/0x34029e02821178B4387e12644896994f910D6E73) |
 | ZkSync | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.zksync.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://explorer.zksync.io/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
 | Abstract | [`0x0000006D38568b00B457580b734e0076C62de659`](https://abscan.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://abscan.org/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
-| Hyperliquid | [`0x0000006D38568b00B457580b734e0076C62de659`](https://hyperevmscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://hyperevmscan.io/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
+| Hyperliquid | [`0x0000006D38568b00B457580b734e0076C62de659`](https://hyperevmscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://hyperevmscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 
 ---
 
