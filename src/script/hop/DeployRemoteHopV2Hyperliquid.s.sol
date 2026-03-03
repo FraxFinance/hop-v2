@@ -3,7 +3,22 @@ pragma solidity 0.8.23;
 
 import { DeployRemoteHopV2 } from "./DeployRemoteHopV2.s.sol";
 
-// forge script src/script/hop/DeployRemoteHopV2Hyperliquid.s.sol --rpc-url https://rpc.hyperliquid.xyz/evm --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY --chain-id 999 --verifier-url https://api.etherscan.io/v2/api --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc
+/// @title DeployRemoteHopV2Hyperliquid
+/// @notice Deploys RemoteHopV2 + FraxUpgradeableProxy + RemoteAdmin on HyperEVM (chain 999, LZ eid 30367)
+/// @dev Uses base class `deployRemoteHopV2()` with standard EVM CREATE2 (cancun salts via 0x4e59b44847b379578588920ca78fbf26c0b4956c deployer).
+///      MUST compile with `FOUNDRY_PROFILE=deploy` and `--evm-version cancun` to match the mined salt bytecode.
+///
+/// @dev Hyperliquid dual-block architecture pre-requisites (see https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/hyperevm/dual-block-architecture):
+///      1. Deployer must be a HyperCore user (receive a Core asset like USDC first)
+///      2. Enable big blocks: submit action `{"type": "evmUserModify", "usingBigBlocks": true}` to target 30M gas slow blocks
+///      3. Optionally use `bigBlockGasPrice` RPC method for gas estimation
+///      4. After deployment, unset `usingBigBlocks` to return to fast blocks
+///
+/// Simulate:
+///   FOUNDRY_PROFILE=deploy forge script src/script/hop/DeployRemoteHopV2Hyperliquid.s.sol --rpc-url https://rpc.hyperliquid.xyz/evm --evm-version cancun --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc
+///
+/// Broadcast:
+///   FOUNDRY_PROFILE=deploy forge script src/script/hop/DeployRemoteHopV2Hyperliquid.s.sol --rpc-url https://rpc.hyperliquid.xyz/evm --evm-version cancun --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY --chain-id 999 --verifier-url https://api.etherscan.io/v2/api --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc
 contract DeployRemoteHopV2Hyperliquid is DeployRemoteHopV2 {
     constructor() {
         proxyAdmin = 0x223a681fc5c5522c85C96157c0efA18cd6c5405c;

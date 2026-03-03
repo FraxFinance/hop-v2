@@ -11,11 +11,13 @@ import { FraxUpgradeableProxy, ITransparentUpgradeableProxy } from "frax-std/Fra
 
 interface IExecutor {
     function endpoint() external view returns (address);
+
     function localEidV2() external view returns (uint32);
 }
 
 interface ISendLibrary {
     function treasury() external view returns (address);
+
     function version() external view returns (uint64, uint8, uint8);
 }
 
@@ -73,7 +75,7 @@ abstract contract DeployRemoteHopV2 is Script {
         });
         console.log("RemoteHopV2 deployed at:", remoteHop);
 
-        address remoteAdmin = address(new RemoteAdmin{ salt: bytes32(uint256(1)) }(frxUsdOft, remoteHop, FRAXTAL_MSIG));
+        address remoteAdmin = _deployRemoteAdmin(remoteHop);
         console.log("RemoteAdmin deployed at:", remoteAdmin);
 
         // grant Pauser roles to msig signers
@@ -125,6 +127,11 @@ abstract contract DeployRemoteHopV2 is Script {
 
     function isStringEqual(string memory _a, string memory _b) public pure returns (bool) {
         return keccak256(abi.encodePacked(_a)) == keccak256(abi.encodePacked(_b));
+    }
+
+    function _deployRemoteAdmin(address remoteHop) internal virtual returns (address) {
+        address remoteAdmin = address(new RemoteAdmin{ salt: bytes32(uint256(1)) }(frxUsdOft, remoteHop, FRAXTAL_MSIG));
+        return remoteAdmin;
     }
 }
 
