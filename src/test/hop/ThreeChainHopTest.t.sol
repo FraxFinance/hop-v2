@@ -21,6 +21,8 @@ import { ITIP20Factory } from "tempo-std/interfaces/ITIP20Factory.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 
+import { TempoTestHelpers } from "./helpers/TempoTestHelpers.sol";
+
 // Mock imports
 import { MockERC20 } from "./mocks/MockERC20.sol";
 import { ChainAOFTMock } from "./mocks/ChainAOFTMock.sol";
@@ -58,7 +60,7 @@ import "forge-std/console2.sol";
 /// 2. OFT bridges to FraxtalHopV2Mock with compose message
 /// 3. Executor calls lzCompose on FraxtalHopV2Mock
 /// 4. FraxtalHopV2Mock bridges to recipient on Chain A
-contract ThreeChainHopTest is TestHelperOz5 {
+contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
     using OptionsBuilder for bytes;
 
     // ============ Chain EIDs (sequential mock EIDs from TestHelperOz5) ============
@@ -324,21 +326,6 @@ contract ThreeChainHopTest is TestHelperOz5 {
         // Set user gas tokens on Tempo
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
         _setUserGasToken(bob, StdTokens.PATH_USD_ADDRESS);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════════════════
-    // TEMPO PRECOMPILE HELPERS
-    // ═══════════════════════════════════════════════════════════════════════════════════════
-
-    function _grantPathUsdIssuerRole(address to) internal {
-        // Grant PATH_USD issuer role via Tempo precompile
-        bytes32 issuerRole = StdTokens.PATH_USD.ISSUER_ROLE();
-        ITIP20RolesAuth(StdTokens.PATH_USD_ADDRESS).grantRole(issuerRole, to);
-    }
-
-    function _setUserGasToken(address user, address token) internal {
-        vm.prank(user);
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(token);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -732,5 +719,300 @@ contract ThreeChainHopTest is TestHelperOz5 {
             OFTMsgCodec.addressToBytes32(address(fraxtalAdapter)),
             "Tempo adapter peer should be Fraxtal adapter"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    // TEST: Tempo sendOFT reverts when msg.value > 0
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// @notice sendOFT reverts with MsgValueNotZero when native ETH is sent on Tempo
+    function test_Tempo_SendOFT_RevertsWhenMsgValueNonZero() public {
+        uint256 sendAmountTempo = 10e6;
+        vm.startPrank(alice);
+
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), sendAmountTempo);
+        IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), type(uint256).max);
+
+        vm.expectRevert(abi.encodeWithSelector(RemoteHopV2TempoMock.MsgValueNotZero.selector, 1 ether));
+        remoteHopTempo.sendOFT{ value: 1 ether }(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+
+        vm.stopPrank();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    // TEST: Fee correctness — direct to Fraxtal (no hop fee)
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// @notice Verify fee accounting for Tempo → Fraxtal direct send (no hop fee expected)
+    function test_Tempo_FeeCorrectness_DirectToFraxtal() public {
+        uint256 sendAmountTempo = 10e6;
+
+        vm.startPrank(alice);
+
+        uint256 fee = remoteHopTempo.quote(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+        assertGt(fee, 0, "Fee should be non-zero");
+
+        // Record balances before
+        uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
+        address nativeTokenAddr = remoteHopTempo.nativeToken();
+        uint256 hopContractNativeBefore = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+
+        // Approve and send
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), sendAmountTempo);
+        IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), fee);
+
+        remoteHopTempo.sendOFT(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+
+        vm.stopPrank();
+
+        // Alice's PATH_USD should decrease by exactly the quoted fee
+        uint256 alicePathUsdAfter = StdTokens.PATH_USD.balanceOf(alice);
+        assertEq(alicePathUsdBefore - alicePathUsdAfter, fee, "Alice should pay exactly the quoted fee in PATH_USD");
+
+        // Direct-to-hub = no hop fee, so hop contract should NOT retain extra native token
+        uint256 hopContractNativeAfter = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+        assertEq(
+            hopContractNativeAfter,
+            hopContractNativeBefore,
+            "Hop contract should retain 0 hop fee for direct-to-hub sends"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    // TEST: Fee correctness — multi-hop Tempo → Fraxtal → Chain A (hop fee retained)
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// @notice Verify that hop fee is retained by contract and only LZ fee goes to endpoint
+    function test_Tempo_FeeCorrectness_MultiHop() public {
+        uint256 sendAmountTempo = 10e6;
+
+        vm.startPrank(alice);
+
+        uint256 fee = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            400_000,
+            ""
+        );
+        assertGt(fee, 0, "Fee should be non-zero for multi-hop");
+
+        // Record balances before
+        uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
+        address nativeTokenAddr = remoteHopTempo.nativeToken();
+        uint256 hopContractNativeBefore = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+
+        // Approve and send
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), sendAmountTempo);
+        IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), fee);
+
+        remoteHopTempo.sendOFT(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            400_000,
+            ""
+        );
+
+        vm.stopPrank();
+
+        // Alice's PATH_USD should decrease by exactly the quoted fee
+        uint256 alicePathUsdAfter = StdTokens.PATH_USD.balanceOf(alice);
+        assertEq(alicePathUsdBefore - alicePathUsdAfter, fee, "Alice should pay exactly the quoted fee in PATH_USD");
+
+        // Hop contract should retain the hop-fee portion as protocol revenue
+        uint256 hopContractNativeAfter = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+        assertGt(
+            hopContractNativeAfter - hopContractNativeBefore,
+            0,
+            "Hop contract should retain hop fee as protocol revenue"
+        );
+
+        // Verify fee breakdown: alice paid LZ fee + hop fee, contract kept hop fee
+        uint256 retainedHopFee = hopContractNativeAfter - hopContractNativeBefore;
+        assertLt(retainedHopFee, fee, "Retained hop fee should be less than total fee (LZ fee was forwarded)");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    // TEST: Quote returns correct units based on user's gas token
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// @notice Quote returns endpoint fee as-is when user's gas token is PATH_USD (whitelisted)
+    function test_Tempo_Quote_WhitelistedGasToken() public {
+        // Alice uses PATH_USD (whitelisted) — quote should return raw endpoint fee
+        vm.prank(alice);
+        uint256 fee = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            10e6,
+            400_000,
+            ""
+        );
+        assertGt(fee, 0, "Fee should be non-zero");
+
+        // Bob also uses PATH_USD — should get same fee
+        vm.prank(bob);
+        uint256 feeBob = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(alice),
+            10e6,
+            400_000,
+            ""
+        );
+        assertEq(fee, feeBob, "Same gas token should yield same quote");
+    }
+
+    /// @notice Quote returns DEX-converted amount for non-whitelisted gas token
+    function test_Tempo_Quote_NonWhitelistedGasToken() public {
+        // Create a non-whitelisted TIP20 with DEX liquidity
+        ITIP20 altGasToken = _createTIP20WithDexPair(
+            "AltGas",
+            "AGAS",
+            keccak256("test_Tempo_Quote_NonWhitelistedGasToken")
+        );
+        uint256 dexLiquidity = 1_000_000e6;
+        _addDexLiquidity(address(altGasToken), dexLiquidity);
+
+        // Set alice's gas token to the non-whitelisted token
+        _setUserGasToken(alice, address(altGasToken));
+
+        // Get quote with non-whitelisted gas token
+        vm.prank(alice);
+        uint256 feeNonWhitelisted = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            10e6,
+            400_000,
+            ""
+        );
+
+        // Get quote with whitelisted gas token (PATH_USD) for comparison
+        _setUserGasToken(bob, StdTokens.PATH_USD_ADDRESS);
+        vm.prank(bob);
+        uint256 feeWhitelisted = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(alice),
+            10e6,
+            400_000,
+            ""
+        );
+
+        assertGt(feeNonWhitelisted, 0, "Non-whitelisted fee should be non-zero");
+        assertGe(
+            feeNonWhitelisted,
+            feeWhitelisted,
+            "Non-whitelisted fee should be >= whitelisted fee (includes DEX conversion)"
+        );
+
+        // Restore alice's gas token for other tests
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+    // TEST: Full send with non-whitelisted gas token (swap path)
+    // ═══════════════════════════════════════════════════════════════════════════════════════
+
+    /// @notice Full Tempo → Fraxtal send using a non-whitelisted gas token via DEX swap
+    function test_Tempo_SendOFT_NonWhitelistedGasToken() public {
+        uint256 sendAmountTempo = 10e6;
+
+        // Create a non-whitelisted TIP20 with DEX liquidity
+        ITIP20 altGasToken = _createTIP20WithDexPair(
+            "SwapGas",
+            "SGAS",
+            keccak256("test_Tempo_SendOFT_NonWhitelistedGasToken")
+        );
+        uint256 dexLiquidity = 1_000_000e6;
+        _addDexLiquidity(address(altGasToken), dexLiquidity);
+
+        // Mint gas tokens for alice
+        altGasToken.mint(alice, 1_000_000e6);
+
+        // Set alice's gas token to the non-whitelisted token
+        _setUserGasToken(alice, address(altGasToken));
+
+        vm.startPrank(alice);
+
+        // Quote fee in user's gas token units
+        uint256 fee = remoteHopTempo.quote(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+
+        // Record balances
+        uint256 aliceAltGasBefore = altGasToken.balanceOf(alice);
+        uint256 aliceTempoTokenBefore = tempoToken.balanceOf(alice);
+
+        // Approve gas token (non-whitelisted) and OFT token
+        IERC20(address(altGasToken)).approve(address(remoteHopTempo), fee);
+        IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
+        IERC20(address(tempoToken)).approve(address(remoteHopTempo), sendAmountTempo);
+
+        // Send with msg.value = 0
+        remoteHopTempo.sendOFT(
+            address(tempoAdapter),
+            FRAXTAL_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            sendAmountTempo,
+            0,
+            ""
+        );
+
+        vm.stopPrank();
+
+        // Verify: TIP20 tokens burned
+        assertEq(
+            tempoToken.balanceOf(alice),
+            aliceTempoTokenBefore - sendAmountTempo,
+            "Alice's TIP20 tokens should be burned"
+        );
+
+        // Verify: alt gas token spent (exact match since quote and send use same DEX state)
+        assertEq(
+            aliceAltGasBefore - altGasToken.balanceOf(alice),
+            fee,
+            "Alice should spend exactly the quoted fee in alt gas token"
+        );
+
+        // Deliver to Fraxtal and verify receipt
+        verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalAdapter)));
+        assertGt(fraxtalToken.balanceOf(bob), 0, "Bob should receive tokens on Fraxtal");
+
+        // Restore alice's gas token
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }
 }

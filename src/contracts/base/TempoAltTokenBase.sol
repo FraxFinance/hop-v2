@@ -6,6 +6,7 @@ import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 import { ILZEndpointDollar } from "src/contracts/interfaces/vendor/layerzero/ILZEndpointDollar.sol";
 import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @dev Interface for EndpointV2Alt's nativeToken function
 interface IEndpointV2Alt {
@@ -95,7 +96,7 @@ abstract contract TempoAltTokenBase {
         if (nativeToken.isWhitelistedToken(_userToken)) {
             return _endpointFee;
         }
-        (, uint128 _amountIn) = _findSwapTarget(_userToken, uint128(_endpointFee));
+        (, uint128 _amountIn) = _findSwapTarget(_userToken, SafeCast.toUint128(_endpointFee));
         return _amountIn;
     }
 
@@ -115,7 +116,7 @@ abstract contract TempoAltTokenBase {
         // Validate that a swap path exists (reverts if no viable path).
         // fee.nativeFee stays in endpoint-native units so _payNative() can
         // correctly determine the whitelisted-token amountOut to acquire.
-        _findSwapTarget(userToken, uint128(fee.nativeFee));
+        _findSwapTarget(userToken, SafeCast.toUint128(fee.nativeFee));
 
         return fee;
     }
@@ -142,14 +143,14 @@ abstract contract TempoAltTokenBase {
         }
 
         // Find the cheapest whitelisted token to swap to
-        (address targetToken, uint128 userTokenAmount) = _findSwapTarget(userToken, uint128(_nativeFee));
+        (address targetToken, uint128 userTokenAmount) = _findSwapTarget(userToken, SafeCast.toUint128(_nativeFee));
 
         ITIP20(userToken).transferFrom(msg.sender, address(this), userTokenAmount);
         ITIP20(userToken).approve(address(StdPrecompiles.STABLECOIN_DEX), userTokenAmount);
         StdPrecompiles.STABLECOIN_DEX.swapExactAmountOut({
             tokenIn: userToken,
             tokenOut: targetToken,
-            amountOut: uint128(_nativeFee),
+            amountOut: SafeCast.toUint128(_nativeFee),
             maxAmountIn: userTokenAmount
         });
 
