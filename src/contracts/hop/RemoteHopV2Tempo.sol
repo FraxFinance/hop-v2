@@ -8,6 +8,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { HopMessage } from "src/contracts/hop/HopV2.sol";
 import { TempoAltTokenBase } from "src/contracts/base/TempoAltTokenBase.sol";
+import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 
 // ====================================================================
@@ -30,7 +31,10 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
     }
 
     /// @notice Send an OFT to a destination with encoded data
-    /// @dev Overrides base to reject native ETH (Tempo uses ERC20 gas via EndpointV2Alt).
+    /// @dev Inlines base HopV2.sendOFT logic to:
+    ///      1. Reject native ETH (Tempo uses ERC20 gas via EndpointV2Alt)
+    ///      2. Adopt the caller's gas token so the contract pays fees in the same ERC20
+    ///      3. Skip _handleMsgValue (no native ETH fee handling on Tempo)
     function sendOFT(
         address _oft,
         uint32 _dstEid,
@@ -41,16 +45,42 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
     ) public payable override {
         // EndpointV2Alt uses ERC20 for gas, not native ETH
         if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
-        super.sendOFT(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
+
+        // Adopt caller's gas token so the contract pays fees in the caller's chosen ERC20
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender));
+
+        // --- Inlined from HopV2.sendOFT (skips _handleMsgValue) ---
+        HopV2Storage storage $ = _getHopV2Storage();
+        if ($.paused) revert HopPaused();
+        if (!$.approvedOft[_oft]) revert InvalidOFT();
+
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: $.localEid,
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+
+        _amountLD = removeDust(_oft, _amountLD);
+        if (_amountLD > 0) SafeERC20.safeTransferFrom(IERC20(IOFT(_oft).token()), msg.sender, address(this), _amountLD);
+
+        if (_dstEid == $.localEid) {
+            _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
+        } else {
+            _sendToDestination(_oft, _amountLD, true, hopMessage);
+        }
+
+        emit SendOFT(_oft, msg.sender, _dstEid, _recipient, _amountLD);
     }
 
     /// @notice Override quote to return fees in the caller's resolved user-token units.
     /// @dev On Tempo, the user's gas token may require a DEX swap to obtain a whitelisted
-    ///      stablecoin.  This override translates the endpoint-native fee so that integrators
-    ///      get a single-step quote() → approve() → sendOFT() UX matching ETH chains.
-    /// @dev For contract integrators: msg.sender is used to resolve the gas token, which may
-    ///      differ from the end-user's token. Use the 7-parameter overload with an explicit
-    ///      _userToken, or call quoteUserTokenFee() for finer control.
+    ///      stablecoin. This override translates the endpoint-native fee so that callers get
+    ///      a single-step quote() → approve() → sendOFT() UX matching ETH chains.
+    /// @dev This overload quotes using the caller's configured gas token, matching sendOFT()
+    ///      behavior. Use `previewQuoteForUserToken()` only for alternate-token estimation.
     function quote(
         address _oft,
         uint32 _dstEid,
@@ -70,9 +100,10 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         return amountIn;
     }
 
-    /// @notice Quote with an explicit user gas token (for contract integrators).
-    /// @dev Use this overload when msg.sender differs from the end-user (e.g. routers, multisigs).
-    function quote(
+    /// @notice Preview the quote for an explicit user gas token.
+    /// @dev This helper is for off-chain estimation under a specific token assumption.
+    ///      sendOFT() still charges using the caller's configured gas token at execution time.
+    function previewQuoteForUserToken(
         address _oft,
         uint32 _dstEid,
         bytes32 _recipient,
@@ -105,7 +136,8 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         // Generate sendParam (always targets Fraxtal hub)
         SendParam memory sendParam = _generateSendParam({ _amountLD: _amountLD, _hopMessage: _hopMessage });
 
-        // Always quote — this is a spoke, only called from sendOFT() (always trusted)
+        // Always quote the send fee. This spoke path is only reached from sendOFT(), so
+        // the ignored trusted-hop flag is intentional here.
         MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
@@ -124,7 +156,7 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         if (_amountLD > 0) SafeERC20.forceApprove(IERC20(IOFT(_oft).token()), _oft, _amountLD);
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
 
-        // Return 0 — fee already paid via ERC20, _handleMsgValue(0) is a no-op when msg.value == 0
+        // Return 0 — native msg.value fee handling is bypassed on Tempo.
         return 0;
     }
 }

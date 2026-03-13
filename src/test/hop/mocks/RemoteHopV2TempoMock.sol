@@ -110,8 +110,9 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         return amountIn;
     }
 
-    /// @notice Quote with an explicit user gas token (for contract integrators).
-    function quote(
+    /// @notice Preview the quote for an explicit user gas token.
+    /// @dev This helper is caller-independent and does not reflect sendOFT() execution binding.
+    function previewQuoteForUserToken(
         address _oft,
         uint32 _dstEid,
         bytes32 _recipient,
@@ -156,7 +157,10 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
     }
 
     /// @notice Send an OFT to a destination with encoded data
-    /// @dev Uses ERC20 gas payment instead of msg.value
+    /// @dev Inlines base HopV2.sendOFT logic to:
+    ///      1. Reject native ETH (Tempo uses ERC20 gas via EndpointV2Alt)
+    ///      2. Adopt the caller's gas token so the contract pays fees in the same ERC20
+    ///      3. Skip _handleMsgValue (no native ETH fee handling on Tempo)
     function sendOFT(
         address _oft,
         uint32 _dstEid,
@@ -167,7 +171,34 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
     ) public payable override {
         // EndpointV2Alt uses ERC20 for gas, not native ETH
         if (msg.value > 0) revert MsgValueNotZero(msg.value);
-        super.sendOFT(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data);
+
+        // Adopt caller's gas token so the contract pays fees in the caller's chosen ERC20
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender));
+
+        // --- Inlined from HopV2.sendOFT (skips _handleMsgValue) ---
+        HopV2Storage storage $ = _getHopV2Storage();
+        if ($.paused) revert HopPaused();
+        if (!$.approvedOft[_oft]) revert InvalidOFT();
+
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: $.localEid,
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+
+        _amountLD = removeDust(_oft, _amountLD);
+        if (_amountLD > 0) SafeERC20.safeTransferFrom(IERC20(IOFT(_oft).token()), msg.sender, address(this), _amountLD);
+
+        if (_dstEid == $.localEid) {
+            _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
+        } else {
+            _sendToDestination(_oft, _amountLD, true, hopMessage);
+        }
+
+        emit SendOFT(_oft, msg.sender, _dstEid, _recipient, _amountLD);
     }
 
     function _generateSendParam(
@@ -212,7 +243,8 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
 
         SendParam memory sendParam = _generateSendParam({ _amountLD: _amountLD, _hopMessage: _hopMessage });
 
-        // Always quote — this is a spoke, only called from sendOFT() (always trusted)
+        // Always quote the send fee. This spoke path is only reached from sendOFT(), so
+        // the ignored trusted-hop flag is intentional here.
         MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
@@ -232,7 +264,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
         if (_amountLD > 0) SafeERC20.forceApprove(IERC20(IOFT(_oft).token()), _oft, _amountLD);
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
 
-        // Return 0 — fee already paid via ERC20, _handleMsgValue(0) is a no-op when msg.value == 0
+        // Return 0 — native msg.value fee handling is bypassed on Tempo.
         return 0;
     }
 

@@ -938,6 +938,61 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }
 
+    /// @notice Explicit-token preview quotes depend on the requested token, not the caller's configured token
+    function test_Tempo_PreviewQuoteForUserToken_IsCallerIndependent() public {
+        ITIP20 altGasToken = _createTIP20WithDexPair(
+            "PreviewGas",
+            "PGAS",
+            keccak256("test_Tempo_PreviewQuoteForUserToken_IsCallerIndependent")
+        );
+        _addDexLiquidity(address(altGasToken), 1_000_000e6);
+
+        _setUserGasToken(alice, address(altGasToken));
+        _setUserGasToken(bob, StdTokens.PATH_USD_ADDRESS);
+
+        vm.prank(alice);
+        uint256 executionQuoteAlice = remoteHopTempo.quote(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            10e6,
+            400_000,
+            ""
+        );
+
+        vm.prank(alice);
+        uint256 previewPathUsdAlice = remoteHopTempo.previewQuoteForUserToken(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(bob),
+            10e6,
+            400_000,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+
+        vm.prank(bob);
+        uint256 previewPathUsdBob = remoteHopTempo.previewQuoteForUserToken(
+            address(tempoAdapter),
+            CHAIN_A_EID,
+            OFTMsgCodec.addressToBytes32(alice),
+            10e6,
+            400_000,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+
+        assertGt(previewPathUsdAlice, 0, "Preview quote should be non-zero");
+        assertEq(previewPathUsdAlice, previewPathUsdBob, "Explicit-token preview should not depend on caller token");
+        assertGe(
+            executionQuoteAlice,
+            previewPathUsdAlice,
+            "Caller-bound execution quote should be >= PATH_USD preview"
+        );
+
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════════════
     // TEST: Full send with non-whitelisted gas token (swap path)
     // ═══════════════════════════════════════════════════════════════════════════════════════
