@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { EndpointV2Mock } from "@layerzerolabs/test-devtools-evm-foundry/contracts/mocks/EndpointV2Mock.sol";
 
-/// @notice Minimal wrapped-native mock used by TempoAltTokenBase integration tests.
+/// @notice Minimal wrapped-native mock used by TempoGasTokenBase integration tests.
 /// @dev Mirrors the relevant LZEndpointDollar surface used by the Tempo fee flow.
 contract MockLZEndpointDollar {
     string public constant name = "LZ Endpoint Dollar";

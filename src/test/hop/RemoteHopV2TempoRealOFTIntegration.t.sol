@@ -277,6 +277,75 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         assertEq(fraxtalTempoToken.balanceOf(bob), sendAmount, "Fraxtal recipient mismatch");
     }
 
+    function test_Tempo_QuoteStatic_MatchesQuote_ForCallerResolvedToken() public {
+        uint256 sendAmount = 10e6;
+        bytes32 recipient = OFTMsgCodec.addressToBytes32(bob);
+
+        vm.startPrank(alice);
+        uint256 quoteFee = remoteHopTempo.quote(address(tempoFrxUsdAdapter), FRAXTAL_EID, recipient, sendAmount, 0, "");
+        uint256 staticFee = remoteHopTempo.quoteStatic(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            recipient,
+            sendAmount,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+        vm.stopPrank();
+
+        assertEq(staticFee, quoteFee, "quoteStatic should match quote for caller's resolved gas token");
+    }
+
+    function test_Tempo_PreviewQuoteForUserToken_UsesExplicitToken() public {
+        uint256 sendAmount = 10e6;
+        bytes32 recipient = OFTMsgCodec.addressToBytes32(bob);
+
+        ITIP20 altGasToken = _createTIP20(
+            "RemoteHop Quote Alt Gas",
+            "RQAG",
+            keccak256("RemoteHopV2TempoRealOFTIntegration-alt-gas")
+        );
+        StdPrecompiles.STABLECOIN_DEX.createPair(address(altGasToken));
+        _addDexLiquidity(address(altGasToken), 1_000_000e6);
+        _setUserGasToken(alice, address(altGasToken));
+
+        vm.startPrank(alice);
+        uint256 staticAltFee = remoteHopTempo.quoteStatic(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            recipient,
+            sendAmount,
+            0,
+            "",
+            address(altGasToken)
+        );
+        uint256 previewAltFee = remoteHopTempo.previewQuoteForUserToken(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            recipient,
+            sendAmount,
+            0,
+            "",
+            address(altGasToken)
+        );
+        uint256 previewPathUsdFee = remoteHopTempo.previewQuoteForUserToken(
+            address(tempoFrxUsdAdapter),
+            FRAXTAL_EID,
+            recipient,
+            sendAmount,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+        vm.stopPrank();
+
+        assertEq(staticAltFee, previewAltFee, "explicit alt token preview should match quoteStatic");
+        assertGe(previewAltFee, previewPathUsdFee, "non-whitelisted preview should be >= PATH_USD preview");
+
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
+    }
+
     function _deployEndpoints() internal {
         chainAEndpoint = new EndpointV2Mock(CHAIN_A_EID, address(this));
         fraxtalEndpoint = new EndpointV2Mock(FRAXTAL_EID, address(this));

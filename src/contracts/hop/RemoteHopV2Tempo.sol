@@ -6,7 +6,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { HopMessage } from "src/contracts/hop/HopV2.sol";
-import { TempoAltTokenBase } from "src/contracts/base/TempoAltTokenBase.sol";
+import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 
@@ -24,8 +24,8 @@ import { StdTokens } from "tempo-std/StdTokens.sol";
 /// @title RemoteHopV2Tempo
 /// @notice Tempo chain variant of RemoteHopV2 that uses ERC20 for gas payment via EndpointV2Alt
 /// @author Frax Finance: https://github.com/FraxFinance
-contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
-    constructor(address _endpoint) TempoAltTokenBase(_endpoint) {
+contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
+    constructor(address _endpoint) TempoGasTokenBase(_endpoint) {
         _disableInitializers();
     }
 
@@ -80,7 +80,9 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
     ///      stablecoin. This override translates the endpoint-native fee so that callers get
     ///      a single-step quote() → approve() → sendOFT() UX matching ETH chains.
     /// @dev This overload quotes using the caller's configured gas token, matching sendOFT()
-    ///      behavior. Use `previewQuoteForUserToken()` only for alternate-token estimation.
+    ///      behavior. Treat this as a compatibility view helper.
+    ///      For deterministic UI pricing on Tempo, prefer `quoteStatic()` or
+    ///      `previewQuoteForUserToken()` via eth_call/simulation.
     function quote(
         address _oft,
         uint32 _dstEid,
@@ -89,34 +91,50 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         uint128 _dstGas,
         bytes memory _data
     ) public view override returns (uint256) {
-        uint32 localEid_ = localEid();
-        if (_dstEid == localEid_) return 0;
-
-        HopMessage memory hopMessage = HopMessage({
-            srcEid: localEid_,
-            dstEid: _dstEid,
-            dstGas: _dstGas,
-            sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _recipient,
-            data: _data
-        });
-
-        SendParam memory sendParam = _generateSendParam({
-            _amountLD: removeDust(_oft, _amount),
-            _hopMessage: hopMessage
-        });
-        MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
-        uint256 hopFeeOnFraxtal = (_dstEid == FRAXTAL_EID || localEid_ == FRAXTAL_EID)
-            ? 0
-            : quoteHop(_dstEid, _dstGas, _data);
-
         address userToken = _resolveUserToken();
-        return _quoteUserTokenFee(userToken, fee.nativeFee) + _quoteUserTokenFee(userToken, hopFeeOnFraxtal);
+        return
+            _quoteWithUserToken({
+                _oft: _oft,
+                _dstEid: _dstEid,
+                _recipient: _recipient,
+                _amount: _amount,
+                _dstGas: _dstGas,
+                _data: _data,
+                _userToken: userToken
+            });
+    }
+
+    /// @notice Simulated quote using an explicit user gas token.
+    /// @dev Intended for off-chain simulation (eth_call). This sets hop contract token context
+    ///      before calling IOFT.quoteSend() so fee routing matches execution.
+    function quoteStatic(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amount,
+        uint128 _dstGas,
+        bytes memory _data,
+        address _userToken
+    ) external returns (uint256) {
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_userToken);
+
+        return
+            _quoteWithUserToken({
+                _oft: _oft,
+                _dstEid: _dstEid,
+                _recipient: _recipient,
+                _amount: _amount,
+                _dstGas: _dstGas,
+                _data: _data,
+                _userToken: _userToken
+            });
     }
 
     /// @notice Preview the quote for an explicit user gas token.
-    /// @dev This helper is for off-chain estimation under a specific token assumption.
-    ///      sendOFT() still charges using the caller's configured gas token at execution time.
+    /// @dev Intended for off-chain simulation (eth_call) under a specific token assumption.
+    ///      This sets hop contract token context before IOFT.quoteSend() for deterministic pricing.
+    ///      Use this when the UI needs arbitrary-token previews without requiring a prior on-chain
+    ///      user token update.
     function previewQuoteForUserToken(
         address _oft,
         uint32 _dstEid,
@@ -125,7 +143,30 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         uint128 _dstGas,
         bytes memory _data,
         address _userToken
-    ) public view returns (uint256) {
+    ) public returns (uint256) {
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_userToken);
+
+        return
+            _quoteWithUserToken({
+                _oft: _oft,
+                _dstEid: _dstEid,
+                _recipient: _recipient,
+                _amount: _amount,
+                _dstGas: _dstGas,
+                _data: _data,
+                _userToken: _userToken
+            });
+    }
+
+    function _quoteWithUserToken(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amount,
+        uint128 _dstGas,
+        bytes memory _data,
+        address _userToken
+    ) internal view returns (uint256) {
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 
@@ -164,8 +205,11 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
         // Generate sendParam (always targets Fraxtal hub)
         SendParam memory sendParam = _generateSendParam({ _amountLD: _amountLD, _hopMessage: _hopMessage });
 
+        address userToken = _resolveUserToken();
+
         // Always quote the send fee. This spoke path is only reached from sendOFT(), so
-        // the ignored trusted-hop flag is intentional here.
+        // the ignored trusted-hop flag is intentional here. sendOFT() already bound
+        // TIP_FEE_MANAGER user token for this flow.
         MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
@@ -174,7 +218,6 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoAltTokenBase {
             ? 0
             : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
 
-        address userToken = _resolveUserToken();
         address oftToken = IOFT(_oft).token();
         uint256 oftFeeInUserToken = _quoteUserTokenFee(userToken, fee.nativeFee);
         uint256 oftTokenAllowance = _amountLD;

@@ -13,11 +13,11 @@ interface IEndpointV2Alt {
     function nativeToken() external view returns (address);
 }
 
-/// @title TempoAltTokenBase
+/// @title TempoGasTokenBase
 /// @notice Shared base for Tempo OFT variants that pay LayerZero fees via ERC20 (EndpointV2Alt).
 ///         Provides the swap-routing logic for converting any user TIP20 gas token into
 ///         an LZEndpointDollar-whitelisted stablecoin for fee payment.
-abstract contract TempoAltTokenBase {
+abstract contract TempoGasTokenBase {
     error NativeTokenUnavailable();
     error OFTAltCore__msg_value_not_zero(uint256 _msg_value);
     error NoSwappableWhitelistedToken(address userToken);

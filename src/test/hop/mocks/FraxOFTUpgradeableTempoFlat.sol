@@ -59,7 +59,7 @@ contract FraxOFTUpgradeableTempoFlat is FraxOFTUpgradeable {
         return _validateQuoteSwapPath(super._quote(_dstEid, _message, _options, _payInLzToken));
     }
 
-    /// @dev Pays the LZ fee via ERC20 swap+wrap through TempoAltTokenBase.
+    /// @dev Pays the LZ fee via ERC20 swap+wrap through TempoGasTokenBase.
     function _payNative(uint256 _nativeFee) internal virtual override returns (uint256 nativeFee) {
         return _payNativeAltToken(_nativeFee, address(endpoint));
     }

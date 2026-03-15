@@ -6,7 +6,7 @@ import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/trans
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SendParam, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { RemoteHopV2Tempo } from "src/contracts/hop/RemoteHopV2Tempo.sol";
-import { TempoAltTokenBase } from "src/contracts/base/TempoAltTokenBase.sol";
+import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 
 interface IEndpointV2AltLike {
@@ -74,6 +74,15 @@ contract RemoteHopV2TempoForkTest is Test {
         _assertDefaultFallbackMatchesPreview(FPI_OFT);
     }
 
+    function testFork_RemoteHopV2Tempo_QuoteStaticMatchesPathUsdPreview() public {
+        _assertQuoteStaticMatchesPreviewPathUsd(FRXUSD_OFT);
+        _assertQuoteStaticMatchesPreviewPathUsd(SFRXUSD_OFT);
+        _assertQuoteStaticMatchesPreviewPathUsd(FRXETH_OFT);
+        _assertQuoteStaticMatchesPreviewPathUsd(SFRXETH_OFT);
+        _assertQuoteStaticMatchesPreviewPathUsd(WFRAX_OFT);
+        _assertQuoteStaticMatchesPreviewPathUsd(FPI_OFT);
+    }
+
     function testFork_RemoteHopV2Tempo_SendOFTRejectsMsgValue() public {
         address user = makeAddr("msgValueUser");
         bytes32 recipient = _toBytes32(makeAddr("recipient"));
@@ -87,7 +96,7 @@ contract RemoteHopV2TempoForkTest is Test {
         assertFalse(success, "sendOFT should revert when msg.value is non-zero");
         assertEq(
             revertData,
-            abi.encodeWithSelector(TempoAltTokenBase.OFTAltCore__msg_value_not_zero.selector, 1),
+            abi.encodeWithSelector(TempoGasTokenBase.OFTAltCore__msg_value_not_zero.selector, 1),
             "unexpected revert data"
         );
     }
@@ -137,6 +146,36 @@ contract RemoteHopV2TempoForkTest is Test {
         );
 
         assertEq(executionQuote, previewQuote, "default PATH_USD fallback mismatch");
+    }
+
+    function _assertQuoteStaticMatchesPreviewPathUsd(address oft) internal {
+        address user = makeAddr(string.concat("quote-static-user-", vm.toString(oft)));
+        bytes32 recipient = _toBytes32(makeAddr(string.concat("quote-static-recipient-", vm.toString(oft))));
+        uint256 amount = _sampleAmount(oft);
+
+        vm.prank(user);
+        uint256 staticQuote = remoteHopTempo.quoteStatic(
+            oft,
+            FRAXTAL_EID,
+            recipient,
+            amount,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+
+        vm.prank(user);
+        uint256 previewQuote = remoteHopTempo.previewQuoteForUserToken(
+            oft,
+            FRAXTAL_EID,
+            recipient,
+            amount,
+            0,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+
+        assertEq(staticQuote, previewQuote, "quoteStatic should match PATH_USD preview under default fallback");
     }
 
     function _sampleAmount(address oft) internal view returns (uint256) {
