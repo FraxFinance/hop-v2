@@ -118,8 +118,7 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
     /// @notice Send an OFT to a destination with encoded data
     /// @dev Inlines base HopV2.sendOFT logic to:
     ///      1. Reject native ETH (Tempo uses ERC20 gas via EndpointV2Alt)
-    ///      2. Adopt the caller's gas token so the contract pays fees in the same ERC20
-    ///      3. Skip _handleMsgValue (no native ETH fee handling on Tempo)
+    ///      2. Skip _handleMsgValue (no native ETH fee handling on Tempo)
     function sendOFT(
         address _oft,
         uint32 _dstEid,
@@ -130,12 +129,6 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
     ) public payable override {
         // EndpointV2Alt uses ERC20 for gas, not native ETH
         if (msg.value > 0) revert MsgValueNotZero(msg.value);
-
-        // Adopt caller's resolved gas token so the contract pays fees in the same ERC20,
-        // including PATH_USD fallback when the user has no explicit token configured.
-        address userToken = StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender);
-        if (userToken == address(0)) userToken = StdTokens.PATH_USD_ADDRESS;
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(userToken);
 
         // --- Inlined from HopV2.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
@@ -205,8 +198,13 @@ contract RemoteHopV2TempoMock is HopV2, IOAppComposer {
 
         SendParam memory sendParam = _generateSendParam({ _amountLD: _amountLD, _hopMessage: _hopMessage });
 
+        address userToken = StdPrecompiles.TIP_FEE_MANAGER.userTokens(msg.sender);
+        if (userToken == address(0)) userToken = StdTokens.PATH_USD_ADDRESS;
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(userToken);
+
         // Always quote the send fee. This spoke path is only reached from sendOFT(), so
-        // the ignored trusted-hop flag is intentional here.
+        // the ignored trusted-hop flag is intentional here. Bind TIP_FEE_MANAGER token
+        // context here so the downstream OFT fee flow uses the caller's resolved gas token.
         MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
