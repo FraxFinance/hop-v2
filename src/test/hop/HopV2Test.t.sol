@@ -54,6 +54,8 @@ contract HopV2Test is FraxTest {
         approvedOfts.push(0x75c38D46001b0F8108c4136216bd2694982C20FC);
 
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
+
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         hop = FraxtalHopV2(deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts));
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
@@ -69,6 +71,8 @@ contract HopV2Test is FraxTest {
             )
         );
         hop.setRemoteHop(30_110, address(remoteHop));
+        vm.stopPrank();
+
         payable(address(hop)).call{ value: 100 ether }("");
     }
 
@@ -81,6 +85,7 @@ contract HopV2Test is FraxTest {
         approvedOfts.push(0x90581eCa9469D8D7F5D3B60f4715027aDFCf7927);
 
         vm.createSelectFork(vm.envString("ARBITRUM_MAINNET_URL"), 316_670_752);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         hop = FraxtalHopV2(deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts));
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
@@ -95,6 +100,7 @@ contract HopV2Test is FraxTest {
                 approvedOfts
             )
         );
+        vm.stopPrank();
     }
 
     function setupEthereum() public {
@@ -106,6 +112,7 @@ contract HopV2Test is FraxTest {
         approvedOfts.push(0x9033BAD7aA130a2466060A2dA71fAe2219781B4b);
 
         vm.createSelectFork(vm.envString("ETHEREUM_MAINNET_URL"), 22_124_047);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         hop = FraxtalHopV2(deployFraxtalHopV2(proxyAdmin, 30_255, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts));
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
@@ -120,6 +127,7 @@ contract HopV2Test is FraxTest {
                 approvedOfts
             )
         );
+        vm.stopPrank();
     }
 
     function test_FraxtalHop_lzCompose_SendLocal_WithoutData() public {

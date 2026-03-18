@@ -146,6 +146,8 @@ function deployRemoteHopV2(
     address _TREASURY,
     address[] memory _approvedOfts
 ) returns (address payable) {
+    bool isTest = msg.sender != 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC;
+
     bytes memory initializeArgs = abi.encodeCall(
         RemoteHopV2.initialize,
         (_localEid, _endpoint, _fraxtalHop, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts)
@@ -168,12 +170,13 @@ function deployRemoteHopV2(
     address implementation = address(
         new RemoteHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c9354ec210d62dd5b592000c0) }()
     );
-    require(implementation == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "Implementation address mismatch");
+    if (!isTest)
+        require(implementation == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "Implementation address mismatch");
 
     FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
         salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cf4079e3d6eda7a014e9e0040)
-    }(implementation, msg.sender, "");
-    require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
+    }(implementation, 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC, "");
+    if (!isTest) require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
 
     ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(implementation, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);

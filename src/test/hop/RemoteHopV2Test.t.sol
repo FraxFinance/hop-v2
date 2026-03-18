@@ -46,6 +46,8 @@ contract RemoteHopV2Test is FraxTest {
         approvedOfts.push(0x5Bff88cA1442c2496f7E475E9e7786383Bc070c0);
 
         vm.createSelectFork(vm.envString("ARBITRUM_MAINNET_URL"), 316_670_752);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
+
         fraxtalHop = address(0x123); // Mock Fraxtal hop address
         remoteHop = RemoteHopV2(
             deployRemoteHopV2(
@@ -60,6 +62,9 @@ contract RemoteHopV2Test is FraxTest {
                 approvedOfts
             )
         );
+
+        remoteHop.grantRole(bytes32(0), 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496); // Grant DEFAULT_ADMIN_ROLE to tester
+        vm.stopPrank();
 
         // Fund the remote hop contract
         payable(address(remoteHop)).call{ value: 100 ether }("");
@@ -372,7 +377,7 @@ contract RemoteHopV2Test is FraxTest {
 
     function test_RemoveDust() public {
         address oft = approvedOfts[0];
-        uint256 amount = 1.123_456_789_123_456_789e18;
+        uint256 amount = 1.123456789123456789e18;
         uint256 cleaned = remoteHop.removeDust(oft, amount);
         assertTrue(cleaned <= amount, "Cleaned amount should be <= original");
     }

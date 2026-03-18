@@ -35,9 +35,12 @@ contract EdgeCaseSecurityTest is FraxTest {
         approvedOfts.push(0x96A394058E2b84A89bac9667B19661Ed003cF5D4);
 
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         hop = FraxtalHopV2(
             deployFraxtalHopV2(proxyAdmin, FRAXTAL_EID, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts)
         );
+        hop.grantRole(bytes32(0), 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496);
+        vm.stopPrank();
 
         payable(address(hop)).call{ value: 100 ether }("");
     }

@@ -31,9 +31,12 @@ contract FraxtalHopV2ExtendedTest is FraxTest {
         approvedOfts.push(0x88Aa7854D3b2dAA5e37E7Ce73A1F39669623a361);
 
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         hop = FraxtalHopV2(
             deployFraxtalHopV2(proxyAdmin, FRAXTAL_EID, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, approvedOfts)
         );
+        hop.grantRole(bytes32(0), 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496);
+        vm.stopPrank();
 
         // Fund the hop contract
         payable(address(hop)).call{ value: 100 ether }("");
@@ -282,7 +285,7 @@ contract FraxtalHopV2ExtendedTest is FraxTest {
 
     function test_RemoveDust() public {
         address oft = approvedOfts[0];
-        uint256 amount = 1.123_456_789_123_456_789e18;
+        uint256 amount = 1.123456789123456789e18;
         uint256 cleaned = hop.removeDust(oft, amount);
         assertTrue(cleaned <= amount, "Cleaned amount should be <= original");
         assertTrue(cleaned % 1e12 == 0, "Cleaned amount should have no dust");
