@@ -34,8 +34,8 @@ import { ITIP20RolesAuth } from "tempo-std/interfaces/ITIP20RolesAuth.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 
-/// @notice Integration coverage for the real Tempo `frxUSD` adapter with the real `RemoteHopV2Tempo`.
-/// @dev Uses the real Tempo-side OFT implementation and production hop contract, while keeping
+/// @notice Integration coverage for the real Tempo OFTs with the production `RemoteHopV2Tempo`.
+/// @dev Uses the real Tempo-side OFT implementations and production hop contract, while keeping
 ///      the non-Tempo peers lightweight so the test can run locally with deterministic endpoints.
 contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
     using OptionsBuilder for bytes;
@@ -115,7 +115,7 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         );
         uint256 aliceFrxUsdBefore = tempoFrxUsdToken.balanceOf(alice);
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
-        uint256 hopWrappedBefore = IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo));
+        uint256 hopPathUsdBefore = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
 
         IERC20(address(tempoFrxUsdToken)).approve(address(remoteHopTempo), type(uint256).max);
         IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), type(uint256).max);
@@ -135,9 +135,9 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         assertEq(tempoFrxUsdToken.balanceOf(alice), aliceFrxUsdBefore - sendAmount, "Tempo frxUSD amount mismatch");
         assertEq(StdTokens.PATH_USD.balanceOf(alice), alicePathUsdBefore - fee, "PATH_USD fee mismatch");
         assertEq(
-            IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo)),
-            hopWrappedBefore,
-            "Direct send should not retain wrapped hop fee"
+            StdTokens.PATH_USD.balanceOf(address(remoteHopTempo)),
+            hopPathUsdBefore,
+            "Direct send should not retain protocol fee"
         );
 
         verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalAdapter)));
@@ -218,7 +218,7 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
             StdTokens.PATH_USD_ADDRESS
         );
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
-        uint256 hopWrappedBefore = IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo));
+        uint256 hopPathUsdBefore = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
 
         IERC20(address(tempoFrxUsdToken)).approve(address(remoteHopTempo), type(uint256).max);
         IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), type(uint256).max);
@@ -235,10 +235,10 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
 
         assertEq(fee, nativeFee, "PATH_USD quoteStatic should be 1:1 with native quote");
 
-        uint256 hopWrappedAfter = IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo));
+        uint256 hopPathUsdAfter = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
         assertEq(StdTokens.PATH_USD.balanceOf(alice), alicePathUsdBefore - fee, "Multi-hop fee mismatch");
-        assertGt(hopWrappedAfter, hopWrappedBefore, "Hop should retain wrapped fee revenue");
-        assertLt(hopWrappedAfter - hopWrappedBefore, fee, "Retained fee should be less than total fee");
+        assertGt(hopPathUsdAfter, hopPathUsdBefore, "Hop should retain payment-token fee revenue");
+        assertLt(hopPathUsdAfter - hopPathUsdBefore, fee, "Retained fee should be less than total fee");
 
         verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalAdapter)));
 
@@ -291,7 +291,7 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         );
         uint256 aliceFraxBefore = tempoFraxOft.balanceOf(alice);
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
-        uint256 hopWrappedBefore = IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo));
+        uint256 hopPathUsdBefore = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
 
         IERC20(address(tempoFraxOft)).approve(address(remoteHopTempo), type(uint256).max);
         IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), type(uint256).max);
@@ -311,9 +311,9 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         assertEq(tempoFraxOft.balanceOf(alice), aliceFraxBefore - sendAmount, "Tempo FRAX amount mismatch");
         assertEq(StdTokens.PATH_USD.balanceOf(alice), alicePathUsdBefore - fee, "PATH_USD fee mismatch");
         assertEq(
-            IERC20(address(remoteHopTempo.nativeToken())).balanceOf(address(remoteHopTempo)),
-            hopWrappedBefore,
-            "Direct send should not retain wrapped hop fee"
+            StdTokens.PATH_USD.balanceOf(address(remoteHopTempo)),
+            hopPathUsdBefore,
+            "Direct send should not retain protocol fee"
         );
 
         verifyPackets(FRAXTAL_EID, addressToBytes32(address(fraxtalTempoAdapter)));
@@ -394,6 +394,49 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         assertEq(staticAltFee, quotedAltFee, "quoteStatic should mirror quoteUserTokenFee(nativeQuote)");
         assertEq(pathUsdFee, pathUsdNativeQuote, "PATH_USD quoteStatic should be 1:1 with native quote");
         assertGe(staticAltFee, pathUsdFee, "non-whitelisted fee should be >= PATH_USD fee");
+
+        _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
+    }
+
+    function test_Tempo_NonWhitelistedMultiHop_QuoteStaticMatchesActualDebit() public {
+        uint256 sendAmount = 10e6;
+        bytes32 recipient = OFTMsgCodec.addressToBytes32(bob);
+
+        ITIP20 altGasToken = _createTIP20(
+            "RemoteHop Exact Debit Alt Gas",
+            "REDAG",
+            keccak256("RemoteHopV2TempoRealOFTIntegration-exact-debit-alt-gas")
+        );
+        StdPrecompiles.STABLECOIN_DEX.createPair(address(altGasToken));
+        _addDexLiquidity(address(altGasToken), 1_000_000e6);
+        altGasToken.mint(alice, INITIAL_PATH_USD);
+        _setUserGasToken(alice, address(altGasToken));
+
+        vm.startPrank(alice);
+        uint256 fee = remoteHopTempo.quoteStatic(
+            address(tempoFrxUsdAdapter),
+            CHAIN_A_EID,
+            recipient,
+            sendAmount,
+            400_000,
+            "",
+            address(altGasToken)
+        );
+        uint256 altGasBefore = IERC20(address(altGasToken)).balanceOf(alice);
+        uint256 retainedBefore = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
+
+        IERC20(address(tempoFrxUsdToken)).approve(address(remoteHopTempo), type(uint256).max);
+        IERC20(address(altGasToken)).approve(address(remoteHopTempo), type(uint256).max);
+
+        remoteHopTempo.sendOFT(address(tempoFrxUsdAdapter), CHAIN_A_EID, recipient, sendAmount, 400_000, "");
+        vm.stopPrank();
+
+        uint256 altGasAfter = IERC20(address(altGasToken)).balanceOf(alice);
+        uint256 retainedAfter = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
+
+        assertGt(fee, 0, "Fee should be non-zero");
+        assertEq(altGasBefore - altGasAfter, fee, "Execution should debit exactly the quoteStatic fee");
+        assertGt(retainedAfter, retainedBefore, "Multi-hop send should retain payment-token hop fee revenue");
 
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }

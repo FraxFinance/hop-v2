@@ -800,8 +800,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         // Record balances before
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
-        address nativeTokenAddr = remoteHopTempo.nativeToken();
-        uint256 hopContractNativeBefore = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+        uint256 hopContractPathUsdBefore = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
 
         // Approve and send
         IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
@@ -823,12 +822,12 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         uint256 alicePathUsdAfter = StdTokens.PATH_USD.balanceOf(alice);
         assertEq(alicePathUsdBefore - alicePathUsdAfter, fee, "Alice should pay exactly the quoted fee in PATH_USD");
 
-        // Direct-to-hub = no hop fee, so hop contract should NOT retain extra native token
-        uint256 hopContractNativeAfter = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+        // Direct-to-hub = no hop fee, so hop contract should not retain protocol fee.
+        uint256 hopContractPathUsdAfter = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
         assertEq(
-            hopContractNativeAfter,
-            hopContractNativeBefore,
-            "Hop contract should retain 0 hop fee for direct-to-hub sends"
+            hopContractPathUsdAfter,
+            hopContractPathUsdBefore,
+            "Hop contract should retain 0 protocol fee for direct-to-hub sends"
         );
     }
 
@@ -836,7 +835,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
     // TEST: Fee correctness — multi-hop Tempo → Fraxtal → Chain A (hop fee retained)
     // ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// @notice Verify that hop fee is retained by contract and only LZ fee goes to endpoint
+    /// @notice Verify that hop fee is retained by contract as payment token and only LZ fee goes to endpoint
     function test_Tempo_FeeCorrectness_MultiHop() public {
         uint256 sendAmountTempo = 10e6;
 
@@ -864,8 +863,7 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
 
         // Record balances before
         uint256 alicePathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
-        address nativeTokenAddr = remoteHopTempo.nativeToken();
-        uint256 hopContractNativeBefore = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+        uint256 hopContractPathUsdBefore = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
 
         // Approve and send
         IERC20(address(tempoToken)).approve(address(tempoAdapter), sendAmountTempo);
@@ -887,16 +885,16 @@ contract ThreeChainHopTest is TestHelperOz5, TempoTestHelpers {
         uint256 alicePathUsdAfter = StdTokens.PATH_USD.balanceOf(alice);
         assertEq(alicePathUsdBefore - alicePathUsdAfter, fee, "Alice should pay exactly the quoted fee in PATH_USD");
 
-        // Hop contract should retain the hop-fee portion as protocol revenue
-        uint256 hopContractNativeAfter = IERC20(nativeTokenAddr).balanceOf(address(remoteHopTempo));
+        // Hop contract should retain the hop-fee portion as protocol revenue in the payment token.
+        uint256 hopContractPathUsdAfter = StdTokens.PATH_USD.balanceOf(address(remoteHopTempo));
         assertGt(
-            hopContractNativeAfter - hopContractNativeBefore,
+            hopContractPathUsdAfter - hopContractPathUsdBefore,
             0,
             "Hop contract should retain hop fee as protocol revenue"
         );
 
         // Verify fee breakdown: alice paid LZ fee + hop fee, contract kept hop fee
-        uint256 retainedHopFee = hopContractNativeAfter - hopContractNativeBefore;
+        uint256 retainedHopFee = hopContractPathUsdAfter - hopContractPathUsdBefore;
         assertLt(retainedHopFee, fee, "Retained hop fee should be less than total fee (LZ fee was forwarded)");
     }
 

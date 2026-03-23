@@ -128,8 +128,8 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         return fee.nativeFee + hopFeeOnFraxtal;
     }
 
-    /// @dev Override to let the OFT pay its own endpoint fee in ERC20 via EndpointV2Alt.
-    ///      The hop separately retains its protocol fee as wrapped LZEndpointDollar.
+    /// @dev Override to let the OFT pay its endpoint fee in ERC20 via EndpointV2Alt.
+    ///      The hop collects endpoint and protocol fees once, then retains the protocol fee as the collected payment token.
     function _sendToDestination(
         address _oft,
         uint256 _amountLD,
@@ -142,12 +142,9 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         // Generate sendParam (always targets Fraxtal hub)
         SendParam memory sendParam = _generateSendParam({ _amountLD: _amountLD, _hopMessage: _hopMessage });
 
-        address userToken = _resolveUserToken();
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(userToken);
-
         // Always quote the send fee. This spoke path is only reached from sendOFT(), so
-        // the ignored trusted-hop flag is intentional here. Bind TIP_FEE_MANAGER token
-        // context here so the downstream OFT fee flow uses the caller's resolved gas token.
+        // the ignored trusted-hop flag is intentional here. The raw quote stays in
+        // endpoint-native units; actual user-token collection happens below.
         MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
@@ -156,12 +153,13 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
             ? 0
             : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
 
-        _collectAndApproveOftFee(_oft, userToken, _amountLD, fee.nativeFee);
+        // Collect the total fee once, then bind the contract to the resulting payment token so the
+        // downstream OFT `_payNative()` path can consume it without performing a second swap.
+        address paymentToken = _collectNativeAltToken(fee.nativeFee + hopFeeOnFraxtal);
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(paymentToken);
+        _approveOftFee(_oft, paymentToken, _amountLD, fee.nativeFee);
 
-        // Collect hop-fee revenue separately; it remains on this contract as wrapped nativeToken.
-        if (hopFeeOnFraxtal > 0) {
-            _payNativeAltToken(hopFeeOnFraxtal, address(this));
-        }
+        // Retain hop-fee revenue on this contract as the collected payment token.
 
         // Send the OFT to Fraxtal hub
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
@@ -170,20 +168,16 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         return 0;
     }
 
-    /// @dev Funds the OFT's own `_payNative()` path from this hop contract so execution matches
-    ///      the real OFT flow, then sets the required approvals for fee payment and token debit.
-    function _collectAndApproveOftFee(address _oft, address userToken, uint256 _amountLD, uint256 _nativeFee) internal {
+    /// @dev Sets the approvals needed for the OFT to debit the bridged amount and consume its fee from the collected payment token.
+    function _approveOftFee(address _oft, address paymentToken, uint256 _amountLD, uint256 _nativeFee) internal {
         address oftToken = IOFT(_oft).token();
-        uint256 oftFeeInUserToken = _quoteUserTokenFee(userToken, _nativeFee);
         uint256 oftTokenAllowance = _amountLD;
 
-        if (oftFeeInUserToken > 0) {
-            ITIP20(userToken).transferFrom(msg.sender, address(this), oftFeeInUserToken);
-
-            if (userToken == oftToken) {
-                oftTokenAllowance += oftFeeInUserToken;
+        if (_nativeFee > 0) {
+            if (paymentToken == oftToken) {
+                oftTokenAllowance += _nativeFee;
             } else {
-                ITIP20(userToken).approve(_oft, oftFeeInUserToken);
+                ITIP20(paymentToken).approve(_oft, _nativeFee);
             }
         }
 

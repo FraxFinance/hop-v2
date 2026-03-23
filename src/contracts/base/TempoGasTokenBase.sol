@@ -5,7 +5,6 @@ import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 import { ILZEndpointDollar } from "src/contracts/interfaces/vendor/layerzero/ILZEndpointDollar.sol";
-import { MessagingFee } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @dev Interface for EndpointV2Alt's nativeToken function
@@ -14,9 +13,9 @@ interface IEndpointV2Alt {
 }
 
 /// @title TempoGasTokenBase
-/// @notice Shared base for Tempo OFT variants that pay LayerZero fees via ERC20 (EndpointV2Alt).
+/// @notice Shared base for Tempo hop variants that collect LayerZero fees via ERC20 (EndpointV2Alt).
 ///         Provides the swap-routing logic for converting any user TIP20 gas token into
-///         an LZEndpointDollar-whitelisted stablecoin for fee payment.
+///         an LZEndpointDollar-whitelisted stablecoin.
 abstract contract TempoGasTokenBase {
     error NativeTokenUnavailable();
     error OFTAltCore__msg_value_not_zero(uint256 _msg_value);
@@ -57,7 +56,7 @@ abstract contract TempoGasTokenBase {
         uint256 _tokenCount = _tokens.length;
 
         for (uint256 i = 0; i < _tokenCount; i++) {
-            // Skip the userToken itself (handled by direct wrap path)
+            // Skip the userToken itself (handled by direct collection path)
             if (_tokens[i] == _userToken) continue;
 
             // Try to quote a swap; if it reverts, skip this token
@@ -105,46 +104,20 @@ abstract contract TempoGasTokenBase {
         return _amountIn;
     }
 
-    /// @dev Validates that the user's gas token has a viable swap path.
-    ///      Returns the fee unchanged — fee.nativeFee stays in endpoint-native units.
-    ///      Children call this from their _quote() override.
-    function _validateQuoteSwapPath(MessagingFee memory fee) internal view returns (MessagingFee memory) {
-        if (fee.nativeFee == 0) return fee;
+    // ─── Fee Collection ──────────────────────────────────────────────────
 
-        address userToken = _resolveUserToken();
-
-        // If userToken is directly whitelisted, no swap needed
-        if (nativeToken.isWhitelistedToken(userToken)) {
-            return fee;
-        }
-
-        // Validate that a swap path exists (reverts if no viable path).
-        // fee.nativeFee stays in endpoint-native units so _payNative() can
-        // correctly determine the whitelisted-token amountOut to acquire.
-        _findSwapTarget(userToken, SafeCast.toUint128(fee.nativeFee));
-
-        return fee;
-    }
-
-    // ─── Payment ─────────────────────────────────────────────────────────
-
-    /// @dev Handles gas payment for EndpointV2Alt which uses an ERC20 token as native.
-    ///      Dynamically resolves the best whitelisted swap target from LZEndpointDollar.
-    ///      Children call this from their _payNative() override, passing `address(endpoint)`.
-    /// @param _nativeFee The fee in endpoint-native (LZEndpointDollar) units.
-    /// @param _endpointAddr The address of the LZ endpoint to send wrapped tokens to.
-    function _payNativeAltToken(uint256 _nativeFee, address _endpointAddr) internal returns (uint256) {
-        if (_nativeFee == 0) return 0;
+    /// @dev Collects `_nativeFee` worth of gas payment into this contract as a single whitelisted token.
+    ///      This is useful for callers that need to split one collected payment across multiple consumers.
+    function _collectNativeAltToken(uint256 _nativeFee) internal returns (address paymentToken) {
+        if (_nativeFee == 0) return _resolveUserToken();
         if (address(nativeToken) == address(0)) revert NativeTokenUnavailable();
 
         address userToken = _resolveUserToken();
 
-        // If userToken is directly whitelisted, wrap directly
+        // If the user's token is already whitelisted, collect it directly.
         if (nativeToken.isWhitelistedToken(userToken)) {
             ITIP20(userToken).transferFrom(msg.sender, address(this), _nativeFee);
-            ITIP20(userToken).approve(address(nativeToken), _nativeFee);
-            nativeToken.wrap(userToken, _endpointAddr, _nativeFee);
-            return 0;
+            return userToken;
         }
 
         // Find the cheapest whitelisted token to swap to
@@ -159,10 +132,6 @@ abstract contract TempoGasTokenBase {
             maxAmountIn: userTokenAmount
         });
 
-        // Wrap the target whitelisted token and send to endpoint
-        ITIP20(targetToken).approve(address(nativeToken), _nativeFee);
-        nativeToken.wrap(targetToken, _endpointAddr, _nativeFee);
-
-        return 0;
+        return targetToken;
     }
 }
