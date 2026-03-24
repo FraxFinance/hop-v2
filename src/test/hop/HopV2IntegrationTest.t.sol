@@ -62,9 +62,12 @@ contract HopV2IntegrationTest is FraxTest {
         fraxtalOfts.push(0x88Aa7854D3b2dAA5e37E7Ce73A1F39669623a361);
 
         vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         fraxtalHop = FraxtalHopV2(
             deployFraxtalHopV2(proxyAdmin, FRAXTAL_EID, ENDPOINT, 3, EXECUTOR, DVN, TREASURY, fraxtalOfts)
         );
+        fraxtalHop.grantRole(bytes32(0), 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496);
+        vm.stopPrank();
 
         payable(address(fraxtalHop)).call{ value: 100 ether }("");
     }
@@ -74,6 +77,7 @@ contract HopV2IntegrationTest is FraxTest {
         arbitrumOfts.push(0x5Bff88cA1442c2496f7E475E9e7786383Bc070c0);
 
         vm.createSelectFork(vm.envString("ARBITRUM_MAINNET_URL"), 316_670_752);
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
         arbitrumHop = RemoteHopV2(
             deployRemoteHopV2(
                 proxyAdmin,
@@ -87,6 +91,8 @@ contract HopV2IntegrationTest is FraxTest {
                 arbitrumOfts
             )
         );
+        arbitrumHop.grantRole(bytes32(0), 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496);
+        vm.stopPrank();
 
         payable(address(arbitrumHop)).call{ value: 100 ether }("");
     }
@@ -196,7 +202,7 @@ contract HopV2IntegrationTest is FraxTest {
         address recipient = address(0x456);
 
         // Amount with dust
-        uint256 amountWithDust = 10.123_456_789_123_456_789e18;
+        uint256 amountWithDust = 10.123456789123456789e18;
         uint256 cleanAmount = fraxtalHop.removeDust(oft, amountWithDust);
 
         deal(FRAXTAL_FRXUSD, sender, amountWithDust);
