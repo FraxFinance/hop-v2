@@ -127,6 +127,7 @@ contract FraxtalHopV2 is HopV2, IOAppComposer {
             sendParam.to = to;
 
             bytes memory options = OptionsBuilder.newOptions();
+            if (_hopMessage.dstGas < 400_000) _hopMessage.dstGas = 400_000;
             options = OptionsBuilder.addExecutorLzComposeOption(options, 0, _hopMessage.dstGas, 0);
             sendParam.extraOptions = options;
 

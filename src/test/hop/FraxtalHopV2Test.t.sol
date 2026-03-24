@@ -281,6 +281,69 @@ contract FraxtalHopV2ExtendedTest is FraxTest {
         assertTrue(fee > 0, "Hop fee with data should be non-zero");
     }
 
+    function test_Quote_RemoteDestinationWithCompose_ZeroGasMatchesFloor() public {
+        address oft = approvedOfts[0];
+        hop.setRemoteHop(ARBITRUM_EID, address(0x123));
+
+        bytes memory data = "compose";
+        bytes32 recipient = bytes32(uint256(uint160(address(this))));
+        uint256 quoteWithZeroComposeGas = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 0, data);
+        uint256 quoteWithFloorComposeGas = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 400_000, data);
+
+        assertEq(
+            quoteWithZeroComposeGas,
+            quoteWithFloorComposeGas,
+            "Compose quote should clamp zero dstGas to 400k floor"
+        );
+    }
+
+    function test_Quote_RemoteDestinationWithCompose_SubFloorMatchesFloor() public {
+        address oft = approvedOfts[0];
+        hop.setRemoteHop(ARBITRUM_EID, address(0x123));
+
+        bytes memory data = "compose";
+        bytes32 recipient = bytes32(uint256(uint160(address(this))));
+        uint256 quoteWithSubFloorComposeGas = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 200_000, data);
+        uint256 quoteWithFloorComposeGas = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 400_000, data);
+
+        assertEq(
+            quoteWithSubFloorComposeGas,
+            quoteWithFloorComposeGas,
+            "Compose quote should clamp sub-floor dstGas to 400k floor"
+        );
+    }
+
+    function test_Quote_RemoteDestinationWithCompose_AboveFloorNotLower() public {
+        address oft = approvedOfts[0];
+        hop.setRemoteHop(ARBITRUM_EID, address(0x123));
+
+        bytes memory data = "compose";
+        bytes32 recipient = bytes32(uint256(uint160(address(this))));
+        uint256 quoteWithFloorComposeGas = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 400_000, data);
+        uint256 quoteWithHigherComposeGas = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 500_000, data);
+
+        assertGe(
+            quoteWithHigherComposeGas,
+            quoteWithFloorComposeGas,
+            "Compose quote with higher dstGas should not be lower than floor quote"
+        );
+    }
+
+    function test_Quote_RemoteDestinationWithoutCompose_DstGasIgnored() public {
+        address oft = approvedOfts[0];
+        hop.setRemoteHop(ARBITRUM_EID, address(0x123));
+
+        bytes32 recipient = bytes32(uint256(uint160(address(this))));
+        uint256 quoteWithZeroGasNoCompose = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 0, "");
+        uint256 quoteWithFloorGasNoCompose = hop.quote(oft, ARBITRUM_EID, recipient, 1e18, 400_000, "");
+
+        assertEq(
+            quoteWithZeroGasNoCompose,
+            quoteWithFloorGasNoCompose,
+            "Dst gas should not impact quote when compose data is empty"
+        );
+    }
+
     // ============ RemoveDust Tests ============
 
     function test_RemoveDust() public {

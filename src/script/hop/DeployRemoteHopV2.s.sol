@@ -170,8 +170,9 @@ function deployRemoteHopV2(
     address implementation = address(
         new RemoteHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c9354ec210d62dd5b592000c0) }()
     );
-    if (!isTest)
+    if (!isTest) {
         require(implementation == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "Implementation address mismatch");
+    }
 
     FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
         salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cf4079e3d6eda7a014e9e0040)
