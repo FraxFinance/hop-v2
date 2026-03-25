@@ -30,6 +30,7 @@ cbor_metadata = false
 # Contracts to track with --gas-report
 #gas_reports = [] 
 evm_version = "cancun"
+fs_permissions = [{ access = "read-write", path = "src/script/hop/RemoteAdmin/txs" }]
 
 [fuzz]
 # Amount of runs per fuzz test
