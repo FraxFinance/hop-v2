@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 import { UpgradeHopV2 } from "src/script/hop/upgrade/UpgradeHopV2.s.sol";
 import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
 
-// TODO: abstract, tempo, zksync, hyperevm
+// TODO: abstract, tempo, zksync, hyperevm, somnia
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://arbitrum.public.blockpi.network/v1/rpc/public --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://mainnet.aurora.dev --legacy --broadcast --verify --verifier blockscout --verifier-url https://explorer.aurora.dev/api/ --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://api.avax.network/ext/bc/C/rpc --broadcast --verify --verifier-url 'https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan' --etherscan-api-key "verifyContract" --verifier etherscan  --gcp
@@ -28,7 +28,7 @@ contract UpgradeRemoteHopV2 is UpgradeHopV2 {
         super.setUp();
     }
 
-    function deployImplementation() internal override {
+    function deployImplementation() internal virtual override {
         vm.startBroadcast();
 
         newImplementation = address(
