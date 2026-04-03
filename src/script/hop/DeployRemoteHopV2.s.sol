@@ -3,6 +3,7 @@ pragma solidity 0.8.23;
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/Script.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
+import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
 import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -155,11 +156,11 @@ function deployRemoteHopV2(
 
     // @dev: for paris
     /*
-    address implementation = address(new RemoteHopV2{salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c2791269a18c599f416240000) }());
-    require(implementation == 0x00000000115aFDdC31Ecf21723EB657f3457B419, "Implementation address mismatch");
+    address hopV2 = address(new RemoteHopV2{salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c2791269a18c599f416240000) }());
+    require(hopV2 == 0x00000000115aFDdC31Ecf21723EB657f3457B419, "hopV2 address mismatch");
 
     FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cab19add5db38737da0030080) }(
-        implementation,
+        hopV2,
         msg.sender,
         ""
     );
@@ -167,18 +168,23 @@ function deployRemoteHopV2(
     */
 
     // @dev: for cancun
-    address implementation = address(
+    address hopV2 = address(
         new RemoteHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c9354ec210d62dd5b592000c0) }()
     );
-    if (!isTest)
-        require(implementation == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "Implementation address mismatch");
+    if (!isTest) require(hopV2 == 0x0000000087ED0dD8b999aE6C7c30f95e9707a3C6, "hopV2 address mismatch");
 
     FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
         salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956cf4079e3d6eda7a014e9e0040)
-    }(implementation, 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC, "");
+    }(hopV2, 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC, "");
     if (!isTest) require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
 
-    ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(implementation, initializeArgs);
+    // deploy v201 implementation and upgrade the proxy to the new imp
+    address hopV201 = address(
+        new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c425b52b18422043c590a00c0) }()
+    );
+    if (!isTest) require(hopV201 == 0xD3b7B923990000003500009264561127A87B00Bd, "hopV201 address mismatch");
+
+    ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(hopV201, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
 
     // set solana enforced options
