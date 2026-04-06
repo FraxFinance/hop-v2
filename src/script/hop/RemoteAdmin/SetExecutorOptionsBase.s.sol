@@ -21,8 +21,6 @@ abstract contract SetExecutorOptionsBase is BaseScript {
     }
 
     HopData[] public hopDatas;
-    SafeTx[] public txs;
-
     // EIDs for which quote() / sendOFT() will revert (pathway not yet configured).
     // The tx is still added to the SafeTx JSON so it can be submitted later.
     mapping(uint32 => bool) public skipCall;
@@ -62,11 +60,16 @@ abstract contract SetExecutorOptionsBase is BaseScript {
     /// @notice Human-readable label prefix for SafeTx entries (e.g. "Set Somnia executor options")
     function _txLabel() internal view virtual returns (string memory);
 
-    /// @notice Output JSON filename (relative to project root, e.g. "src/script/hop/RemoteAdmin/txs/Foo.json")
-    function _outputFilename() internal view virtual returns (string memory);
+    /// @notice Output directory (relative to project root, e.g. "src/script/hop/RemoteAdmin/txs/SetFooOptions")
+    function _outputDir() internal view virtual returns (string memory);
+
+    /// @notice The source chain EID used in the filename (e.g. 30380 for Somnia)
+    function _sourceEid() internal view virtual returns (uint32);
 
     function run() external {
         bytes memory remoteCall = _remoteCall();
+        string memory root = vm.projectRoot();
+        string memory outputDir = _outputDir();
         uint256 lastFee;
 
         for (uint256 i = 0; i < hopDatas.length; i++) {
@@ -106,19 +109,25 @@ abstract contract SetExecutorOptionsBase is BaseScript {
                 require(success, string.concat("sendOFT failed for ", hopData.name));
             }
 
-            txs.push(
-                SafeTx({
-                    name: string.concat(_txLabel(), " on ", hopData.name),
-                    to: FRAXTAL_HOP,
-                    value: fee,
-                    data: localCall
-                })
-            );
-        }
+            // Write individual per-chain JSON
+            SafeTx[] memory singleTx = new SafeTx[](1);
+            singleTx[0] = SafeTx({
+                name: string.concat(_txLabel(), " on ", hopData.name),
+                to: FRAXTAL_HOP,
+                value: fee,
+                data: localCall
+            });
 
-        string memory root = vm.projectRoot();
-        string memory filename = string(abi.encodePacked(root, "/", _outputFilename()));
-        new SafeTxHelper().writeTxs(txs, filename);
+            string memory chainFilename = string(
+                abi.encodePacked(
+                    root, "/", outputDir, "/",
+                    vm.toString(uint256(_sourceEid())), "-",
+                    vm.toString(uint256(hopData.eid)),
+                    "(", hopData.name, ")", ".json"
+                )
+            );
+            new SafeTxHelper().writeTxs(singleTx, chainFilename);
+        }
     }
 
     function _addHop(string memory _name, uint32 _eid, address _hop, address _remoteAdmin) internal {
