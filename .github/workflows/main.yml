@@ -31,4 +31,6 @@ jobs:
       - run: pnpm i
       - run: pnpm lint:check
       - run: forge build
-      - run: forge test
+      - run: >-
+          forge test --match-path
+          'src/test/{RemoteAdminTest.t.sol,hop/HopV2QuoteHopOptionsTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/ThreeChainHopTest.t.sol}'

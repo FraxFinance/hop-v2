@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
-import "contracts/flat/FraxOFTUpgradeableFlat.sol";
+import "contracts/flat/FRAXOFTUpgradeableFlat.sol";
 
 import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
@@ -14,17 +14,23 @@ interface IEndpointV2AltFlat {
 }
 
 /// @notice Local test helper that preserves the upstream Tempo OFT logic while sourcing
-///         the OFT implementation from the published flattened contract to avoid mixed-OZ import conflicts.
-contract FraxOFTUpgradeableTempoFlat is FraxOFTUpgradeable {
+///         the OFT implementation from the published flat FRAX OFT contract.
+contract FraxOFTUpgradeableTempoFlat is FRAXOFTUpgradeable {
     error NativeTokenUnavailable();
     error OFTAltCore__msg_value_not_zero(uint256 _msg_value);
     error NoSwappableWhitelistedToken(address userToken);
 
     ILZEndpointDollar public immutable nativeToken;
 
-    constructor(address _lzEndpoint) FraxOFTUpgradeable(_lzEndpoint) {
+    constructor(address _lzEndpoint) FRAXOFTUpgradeable(_lzEndpoint) {
         nativeToken = ILZEndpointDollar(IEndpointV2AltFlat(_lzEndpoint).nativeToken());
         _disableInitializers();
+    }
+
+    function initialize(string memory _name, string memory _symbol, address _delegate) external reinitializer(3) {
+        __OFT_init(_name, _symbol, _delegate);
+        __Ownable_init();
+        _transferOwnership(_delegate);
     }
 
     /// @dev Overrides send to prevent msg.value being sent (EndpointV2Alt uses ERC20 for gas)
