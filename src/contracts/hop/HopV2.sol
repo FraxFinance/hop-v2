@@ -48,9 +48,9 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     }
 
     // keccak256(abi.encode(uint256(keccak256("frax.storage.HopV2")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant HopV2StorageLocation = 0x6f2b5e4a4e4e1ee6e84aeabd150e6bcb39c4b05494d47809c3cd3d998f859100;
+    bytes32 internal constant HopV2StorageLocation = 0x6f2b5e4a4e4e1ee6e84aeabd150e6bcb39c4b05494d47809c3cd3d998f859100;
 
-    function _getHopV2Storage() private pure returns (HopV2Storage storage $) {
+    function _getHopV2Storage() internal pure returns (HopV2Storage storage $) {
         assembly {
             $.slot := HopV2StorageLocation
         }
@@ -180,7 +180,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         uint256 _amount,
         uint128 _dstGas,
         bytes memory _data
-    ) public view returns (uint256) {
+    ) public view virtual returns (uint256) {
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 
@@ -268,7 +268,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         uint256 _amountLD,
         bool _isTrustedHopMessage,
         HopMessage memory _hopMessage
-    ) internal returns (uint256) {
+    ) internal virtual returns (uint256) {
         // generate sendParam
         SendParam memory sendParam = _generateSendParam({
             _amountLD: removeDust(_oft, _amountLD),

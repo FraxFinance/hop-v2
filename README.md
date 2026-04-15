@@ -1529,6 +1529,7 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | ZkSync | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.zksync.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://explorer.zksync.io/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
 | Fraxtal | [`0x00000000e18aFc20Afe54d4B2C8688bB60c06B36`](https://fraxscan.com/address/0x00000000e18aFc20Afe54d4B2C8688bB60c06B36) | [`0x34029e02821178B4387e12644896994f910D6E73`](https://fraxscan.com/address/0x34029e02821178B4387e12644896994f910D6E73) |
 | Somnia | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.somnia.network/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://explorer.somnia.network/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
+| Tempo | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explore.mainnet.tempo.xyz/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f`](https://explore.mainnet.tempo.xyz/address/0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f) |
 ---
 
 ## 9. Integration Checklist

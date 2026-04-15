@@ -99,8 +99,9 @@ function deployFraxtalHopV2(
     address implementation = address(
         new FraxtalHopV2{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c91747cf1b91c32641c050060) }()
     );
-    if (!isTest)
+    if (!isTest) {
         require(implementation == 0x1E92C54DccA30015ca00a1e19500004600003f02, "Implementation deployment failed");
+    }
     FraxUpgradeableProxy proxy = new FraxUpgradeableProxy{
         salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c7f4c78212c484a739f030080)
     }(implementation, 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC, "");

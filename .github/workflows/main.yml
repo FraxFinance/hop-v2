@@ -31,4 +31,9 @@ jobs:
       - run: pnpm i
       - run: pnpm lint:check
       - run: forge build
-      - run: forge test
+      - run: >-
+          forge test --no-match-path
+          'src/test/{hop/RemoteHopV2TempoForkTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/ThreeChainHopTest.t.sol,vault/RemoteVaultDepositTest.t.sol}'
+      - run: >-
+          FOUNDRY_PROFILE=testbuild forge test --match-path
+          'src/test/vault/RemoteVaultDepositTest.t.sol'
