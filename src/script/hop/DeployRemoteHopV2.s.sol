@@ -187,6 +187,10 @@ function deployRemoteHopV2(
         30_168,
         hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0"
     );
+    // set tempo enforced options
+    RemoteHopV2(payable(address(proxy))).setExecutorOptions(30_410, hex"01002101000000000000000000000000002625A0");
+    // set somnia enforced options
+    RemoteHopV2(payable(address(proxy))).setExecutorOptions(30_380, hex"010021010000000000000000000000000016E360");
 
     return payable(address(proxy));
 }
