@@ -36,6 +36,19 @@ contract RemoteHopV2 is HopV2, IOAppComposer {
         address _TREASURY,
         address[] memory _approvedOfts
     ) external initializer {
+        __init_RemoteHopV2(_localEid, _endpoint, _fraxtalHop, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts);
+    }
+
+    function __init_RemoteHopV2(
+        uint32 _localEid,
+        address _endpoint,
+        bytes32 _fraxtalHop,
+        uint32 _numDVNs,
+        address _EXECUTOR,
+        address _DVN,
+        address _TREASURY,
+        address[] memory _approvedOfts
+    ) internal onlyInitializing {
         __init_HopV2(_localEid, _endpoint, _numDVNs, _EXECUTOR, _DVN, _TREASURY, _approvedOfts);
         _setRemoteHop(FRAXTAL_EID, _fraxtalHop);
     }

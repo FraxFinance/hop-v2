@@ -11,20 +11,20 @@ interface IOFT {
     function token() external view returns (address);
 }
 
-// forge script src/script/test/TestHopV2.s.sol --rpc-url https://mainnet.base.org --broadcast
+// forge script src/script/test/hop/TestHopV2.s.sol --rpc-url https://mainnet.base.org --broadcast
 contract TestHopV2 is BaseScript {
     uint256 public configDeployerPK = vm.envUint("PK_CONFIG_DEPLOYER");
 
     function run() public {
-        IHopV2 hopV2 = IHopV2(0x1b93526eA567d59B7FD38126bb74D72818166C51);
+        IHopV2 hopV2 = IHopV2(0x7C5004F64F86728b5d852CeEc7987333114b206d);
 
         // hop arguments
-        address oft = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
-        uint32 dstEid = 30_184;
-        bytes32 recipient = bytes32(uint256(uint160(0x378699c6F0f77033024b3b1F3796d67a9AC82D5D)));
+        address oft = 0xe5020A6d073a794B6E7f05678707dE47986Fb0b6;
+        uint32 dstEid = 30_110;
+        bytes32 recipient = bytes32(uint256(uint160(0x742109450E2466421b00A2Bf61D513D2616a74FC))); // arbitrum mock hopcomposer
         uint256 amountLD = 0.0001e18;
-        uint128 dstGas = 250_000;
-        bytes memory data = "hello world";
+        uint128 dstGas = 0;
+        bytes memory data = new bytes(9500);
 
         // quote cost of send
         uint256 fee = hopV2.quote(oft, dstEid, recipient, amountLD, dstGas, data);
