@@ -709,7 +709,7 @@ event Hop(
 
 **File:** [src/contracts/hop/RemoteHopV2.sol](../src/contracts/hop/RemoteHopV2.sol)
 
-Deployed on Arbitrum, Base, Ethereum at `0x0000006D38568b00B457580b734e0076C62de659`.
+Deployed on multiple spoke chains (see Section 8) at `0x0000006D38568b00B457580b734e0076C62de659`.
 
 #### Initialization
 
@@ -1515,11 +1515,13 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | Ink | [`0x0000006D38568b00B457580b734e0076C62de659`](https://routescan.io/address/0x0000006D38568b00B457580b734e0076C62de659/contract/57073/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://routescan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/57073/code) |
 | Katana | [`0x0000006D38568b00B457580b734e0076C62de659`](https://katanascan.com/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://katanascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Mode | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.mode.network/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.mode.network/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Monad | [`0x0000006D38568b00B457580b734e0076C62de659`](https://monadscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55`](https://monadscan.com/address/0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55) |
 | Optimism | [`0x0000006D38568b00B457580b734e0076C62de659`](https://optimistic.etherscan.io/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://optimistic.etherscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Polygon | [`0x0000006D38568b00B457580b734e0076C62de659`](https://polygonscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://polygonscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Plume | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.plume.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.plume.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Sei | [`0x0000006D38568b00B457580b734e0076C62de659`](https://seiscan.io/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://seiscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Sonic | [`0x0000006D38568b00B457580b734e0076C62de659`](https://sonicscan.org/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://sonicscan.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Stable | [`0x0000006D38568b00B457580b734e0076C62de659`](https://stablescan.xyz/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://stablescan.xyz/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Unichain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://uniscan.xyz/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://uniscan.xyz/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Worldchain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://worldscan.org/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://worldscan.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | X-Layer | [`0x0000006D38568b00B457580b734e0076C62de659`](https://oklink.com/x-layer/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://oklink.com/x-layer/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
