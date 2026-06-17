@@ -27,10 +27,7 @@ contract SimulateEthereumDefaultAdminRole is Test {
         );
 
         // 2. Build the compose data (same as the script)
-        bytes memory remoteCall = abi.encodeCall(
-            IAccessControl.grantRole,
-            (bytes32(0), COMPTROLLER)
-        );
+        bytes memory remoteCall = abi.encodeCall(IAccessControl.grantRole, (bytes32(0), COMPTROLLER));
         bytes memory composeData = abi.encode(REMOTE_HOP, remoteCall);
 
         // 3. Simulate HopV2._sendLocal() calling RemoteAdmin.hopCompose()
