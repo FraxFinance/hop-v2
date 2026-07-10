@@ -5,6 +5,7 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
 
 import { ILayerZeroDVN } from "src/contracts/interfaces/ILayerZeroDVN.sol";
 import { ILayerZeroTreasury } from "src/contracts/interfaces/ILayerZeroTreasury.sol";
@@ -223,13 +224,12 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
             if (_dstGas < 400_000) _dstGas = 400_000;
             options = abi.encodePacked(options, hex"010013030000", _dstGas);
         }
-        // msg length = OFTCore._buildMsgAndOptions() =>
-        //                OFTMsgCodec.encode() =>
-        //                  abi.encodePacked(_sendTo, _amountShared, addressToBytes32(msg.sender), _composeMsg)
-        // _sendTo = 32, _amountShared = 8 (uint64), addressToBytes32(msg.sender) = 32,
-        // _composeMsg = 288 (abi.encode(HopMessage(0,0,0,bytes32(0),bytes32(0),new bytes(1)))) + _data.length
-        // total = 32 + 8 + 32 + 288 + _data.length = 360 + _data.length
-        uint256 executorFee = IExecutor($.EXECUTOR).getFee(_dstEid, address(this), 360 + _data.length, options);
+        // Derive message length from the same OFT codec path used at send time.
+        bytes memory composeMsg = abi.encode(
+            HopMessage({ srcEid: 0, dstEid: 0, dstGas: 0, sender: bytes32(0), recipient: bytes32(0), data: _data })
+        );
+        (bytes memory oftMessage, ) = OFTMsgCodec.encode(bytes32(0), uint64(0), composeMsg);
+        uint256 executorFee = IExecutor($.EXECUTOR).getFee(_dstEid, address(this), oftMessage.length, options);
         uint256 totalFee = dvnFee * $.numDVNs + executorFee;
         uint256 treasuryFee = ILayerZeroTreasury($.TREASURY).getFee(address(this), _dstEid, totalFee, false);
         finalFee = totalFee + treasuryFee;
