@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "frax-std/FraxTest.sol";
 import { FraxtalHopV2 } from "src/contracts/hop/FraxtalHopV2.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
-import { HopMessage } from "src/contracts/interfaces/IHopV2.sol";
+import { HopMessage, FeeMultipliers } from "src/contracts/interfaces/IHopV2.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
@@ -286,6 +286,38 @@ contract HopV2IntegrationTest is FraxTest {
         assertApproxEqAbs(feeWithHopFee, (feeInitial * 101) / 100, feeInitial / 100, "Hop fee should be ~1%");
     }
 
+    function test_Integration_SetFeeMultipliers() public {
+        setUpFraxtal();
+
+        uint256 feeInitial = fraxtalHop.quoteHop(ARBITRUM_EID, 400_000, "");
+        uint256 feeOtherEid = fraxtalHop.quoteHop(ETHEREUM_EID, 400_000, "");
+
+        // Explicit 1x multipliers should leave the quote unchanged (same as unset)
+        fraxtalHop.setFeeMultipliers(ARBITRUM_EID, 10_000, 10_000, 10_000);
+        assertEq(fraxtalHop.quoteHop(ARBITRUM_EID, 400_000, ""), feeInitial, "1x multipliers should not change fee");
+
+        // 2x multipliers on all components should increase the quote
+        fraxtalHop.setFeeMultipliers(ARBITRUM_EID, 20_000, 20_000, 20_000);
+        uint256 feeMultiplied = fraxtalHop.quoteHop(ARBITRUM_EID, 400_000, "");
+        assertGt(feeMultiplied, feeInitial, "2x multipliers should increase fee");
+
+        FeeMultipliers memory multipliers = fraxtalHop.feeMultipliers(ARBITRUM_EID);
+        assertEq(multipliers.dvn, 20_000, "dvn multiplier should be stored");
+        assertEq(multipliers.executor, 20_000, "executor multiplier should be stored");
+        assertEq(multipliers.treasury, 20_000, "treasury multiplier should be stored");
+
+        // Multipliers are keyed per remote EID and should not affect other chains
+        assertEq(fraxtalHop.quoteHop(ETHEREUM_EID, 400_000, ""), feeOtherEid, "other EIDs should be unaffected");
+    }
+
+    function test_Integration_SetFeeMultipliers_NotAdmin() public {
+        setUpFraxtal();
+
+        vm.prank(address(0xdead));
+        vm.expectRevert();
+        fraxtalHop.setFeeMultipliers(ARBITRUM_EID, 20_000, 20_000, 20_000);
+    }
+
     // ============ Access Control Tests ============
 
     function test_Integration_AdminFunctions() public {
@@ -331,10 +363,16 @@ contract HopV2IntegrationTest is FraxTest {
         // Send ETH to the hop contract
         payable(address(fraxtalHop)).call{ value: 10 ether }("");
 
+        // Admin does not hold RECOVER_ETH_ROLE by default and must grant it explicitly
+        bytes32 recoverEthRole = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
+        vm.expectRevert();
+        fraxtalHop.recoverETH(5 ether);
+        fraxtalHop.grantRole(recoverEthRole, address(this));
+
         uint256 balanceBefore = address(this).balance;
 
-        // Recover the stuck ETH
-        fraxtalHop.recover(address(this), 5 ether, "");
+        // Recover the stuck ETH to the caller
+        fraxtalHop.recoverETH(5 ether);
 
         assertEq(address(this).balance, balanceBefore + 5 ether, "Should recover ETH");
     }
@@ -347,9 +385,8 @@ contract HopV2IntegrationTest is FraxTest {
 
         uint256 balanceBefore = IERC20(FRAXTAL_FRXUSD).balanceOf(address(this));
 
-        // Recover the stuck tokens
-        bytes memory callData = abi.encodeWithSignature("transfer(address,uint256)", address(this), 50e18);
-        fraxtalHop.recover(FRAXTAL_FRXUSD, 0, callData);
+        // Recover the stuck tokens to the caller
+        fraxtalHop.recoverERC20(FRAXTAL_FRXUSD, 50e18);
 
         assertEq(IERC20(FRAXTAL_FRXUSD).balanceOf(address(this)), balanceBefore + 50e18, "Should recover tokens");
     }

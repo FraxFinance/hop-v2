@@ -559,9 +559,11 @@ bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 | `setRemoteHop(eid, bytes32)` | `DEFAULT_ADMIN_ROLE` | Register spoke (bytes32) |
 | `setNumDVNs(n)` | `DEFAULT_ADMIN_ROLE` | Set DVN count for fee |
 | `setHopFee(fee)` | `DEFAULT_ADMIN_ROLE` | Set service fee (10_000 based) |
+| `setFeeMultipliers(eid, dvn, executor, treasury)` | `DEFAULT_ADMIN_ROLE` | Per-remote-EID quoteHop fee multipliers (10_000 = 1x, 0 = unset = 1x) |
 | `setExecutorOptions(eid, opts)` | `DEFAULT_ADMIN_ROLE` | Set per-chain executor options |
 | `setMessageProcessed(...)` | `DEFAULT_ADMIN_ROLE` | Manually mark message processed |
-| `recover(target, value, data)` | `DEFAULT_ADMIN_ROLE` | Emergency fund recovery |
+| `recoverERC20(token, amount)` | `DEFAULT_ADMIN_ROLE` | Recover ERC20 tokens to the caller |
+| `recoverETH(amount)` | `RECOVER_ETH_ROLE` | Recover ETH to the caller |
 
 #### Key Events
 
@@ -579,6 +581,7 @@ error NotEndpoint();      // lzCompose caller is not LZ endpoint
 error NotAuthorized();    // Caller lacks required role
 error InsufficientFee();  // msg.value < required fee
 error RefundFailed();     // ETH refund call failed
+error RecoverFailed();    // ETH recovery call failed
 ```
 
 #### Fee Calculation (`quoteHop`)
@@ -1064,13 +1067,17 @@ DEFAULT_ADMIN_ROLE
   ├─ setRemoteHop()           Register spokes
   ├─ setNumDVNs()             DVN configuration
   ├─ setHopFee()              Service fee
+  ├─ setFeeMultipliers()      Per-remote-EID quoteHop fee multipliers
   ├─ setExecutorOptions()     Per-chain gas options
   ├─ pauseOff()               Resume (admin only, not pauser)
   ├─ setMessageProcessed()    Manual replay mark
-  └─ recover()                Emergency fund recovery
+  └─ recoverERC20()           Recover ERC20 tokens to the caller
 
 PAUSER_ROLE
   └─ pauseOn()                Halt hops (emergency)
+
+RECOVER_ETH_ROLE
+  └─ recoverETH()             Recover ETH to the caller (not held by admin by default)
 ```
 
 ### 6.4 OFT Whitelist

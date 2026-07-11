@@ -24,6 +24,9 @@ contract FraxtalHopV2ExtendedTest is FraxTest {
     uint32 constant ARBITRUM_EID = 30_110;
     uint32 constant ETHEREUM_EID = 30_101;
 
+    /// @dev keccak256("RECOVER_ETH_ROLE")
+    bytes32 constant RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
+
     address constant frxUSD = 0xFc00000000000000000000000000000000000001;
 
     function setUp() public {
@@ -216,19 +219,43 @@ contract FraxtalHopV2ExtendedTest is FraxTest {
         hop.setMessageProcessed(approvedOfts[0], ARBITRUM_EID, 1, bytes32(uint256(0x123)));
     }
 
-    function test_Recover() public {
+    function test_RecoverETH() public {
         // Send some ETH to the hop contract
         deal(address(hop), 10 ether);
+        hop.grantRole(RECOVER_ETH_ROLE, address(this));
 
         uint256 balanceBefore = address(this).balance;
-        hop.recover(address(this), 1 ether, "");
+        hop.recoverETH(1 ether);
         assertEq(address(this).balance, balanceBefore + 1 ether);
     }
 
-    function test_Recover_NotAuthorized() public {
+    function test_RecoverETH_NotAuthorized() public {
+        deal(address(hop), 10 ether);
+
+        // Admin does not hold RECOVER_ETH_ROLE by default
+        vm.expectRevert();
+        hop.recoverETH(1 ether);
+
         vm.prank(address(0xdead));
         vm.expectRevert();
-        hop.recover(address(this), 1 ether, "");
+        hop.recoverETH(1 ether);
+    }
+
+    function test_RecoverERC20() public {
+        // Send some tokens to the hop contract
+        deal(frxUSD, address(hop), 10e18);
+
+        uint256 balanceBefore = IERC20(frxUSD).balanceOf(address(this));
+        hop.recoverERC20(frxUSD, 1e18);
+        assertEq(IERC20(frxUSD).balanceOf(address(this)), balanceBefore + 1e18);
+    }
+
+    function test_RecoverERC20_NotAuthorized() public {
+        deal(frxUSD, address(hop), 10e18);
+
+        vm.prank(address(0xdead));
+        vm.expectRevert();
+        hop.recoverERC20(frxUSD, 1e18);
     }
 
     // ============ Paused State Tests ============

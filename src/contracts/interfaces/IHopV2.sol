@@ -9,6 +9,13 @@ struct HopMessage {
     bytes data;
 }
 
+/// @dev Multipliers applied to the fee components in quoteHop. 10_000 based so 10_000 = 1x; 0 = unset = 1x
+struct FeeMultipliers {
+    uint64 dvn;
+    uint64 executor;
+    uint64 treasury;
+}
+
 interface IHopV2 {
     // Mutable funcs
 
@@ -43,10 +50,12 @@ interface IHopV2 {
     function setApprovedOft(address _oft, bool _isApproved) external;
     function setNumDVNs(uint32 _numDVNs) external;
     function setHopFee(uint256 _hopFee) external;
+    function setFeeMultipliers(uint32 _eid, uint64 _dvn, uint64 _executor, uint64 _treasury) external;
     function setExecutorOptions(uint32 eid, bytes memory _options) external;
     function setRemoteHop(uint32 _eid, address _remoteHop) external;
     function setRemoteHop(uint32 _eid, bytes32 _remoteHop) external;
-    function recover(address _target, uint256 _value, bytes memory _data) external;
+    function recoverERC20(address _tokenAddress, uint256 _tokenAmount) external;
+    function recoverETH(uint256 _ethAmount) external;
     function setMessageProcessed(address _oft, uint32 _srcEid, uint64 _nonce, bytes32 _composeFrom) external;
 
     // Storage views
@@ -58,6 +67,7 @@ interface IHopV2 {
     function remoteHop(uint32 eid) external view returns (bytes32 hop);
     function numDVNs() external view returns (uint32);
     function hopFee() external view returns (uint256);
+    function feeMultipliers(uint32 eid) external view returns (FeeMultipliers memory);
     function executorOptions(uint32 eid) external view returns (bytes memory);
     function EXECUTOR() external view returns (address);
     function DVN() external view returns (address);

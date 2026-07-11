@@ -21,3 +21,4 @@ node_modules
 lcov.info
 report/
 .idea/
+.claude/

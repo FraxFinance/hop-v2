@@ -12,13 +12,15 @@ import { IExecutor } from "src/contracts/interfaces/IExecutor.sol";
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { IHopV2, HopMessage } from "src/contracts/interfaces/IHopV2.sol";
+import { IHopV2, HopMessage, FeeMultipliers } from "src/contracts/interfaces/IHopV2.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
 contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     uint32 internal constant FRAXTAL_EID = 30_255;
     /// @dev keccak256("PAUSER_ROLE")
     bytes32 internal constant PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
+    /// @dev keccak256("RECOVER_ETH_ROLE")
+    bytes32 internal constant RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
 
     struct HopV2Storage {
         /// @dev EID of this chain
@@ -45,6 +47,8 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         address DVN;
         /// @dev Address of LZ treasury
         address TREASURY;
+        /// @dev Multipliers applied to the quoteHop fee components per remote EID (10_000 = 1x, 0 = unset = 1x)
+        mapping(uint32 eid => FeeMultipliers multipliers) feeMultipliers;
     }
 
     // keccak256(abi.encode(uint256(keccak256("frax.storage.HopV2")) - 1)) & ~bytes32(uint256(0xff))
@@ -58,6 +62,8 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
 
     event SendOFT(address oft, address indexed sender, uint32 indexed dstEid, bytes32 indexed to, uint256 amount);
     event MessageHash(address oft, uint32 indexed srcEid, uint64 indexed nonce, bytes32 indexed composeFrom);
+    event RecoveredERC20(address token, uint256 amount);
+    event RecoveredETH(uint256 amount);
 
     error InvalidOFT();
     error HopPaused();
@@ -65,6 +71,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     error NotAuthorized();
     error InsufficientFee();
     error RefundFailed();
+    error RecoverFailed();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -215,8 +222,10 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         bytes memory _data
     ) public view override returns (uint256 finalFee) {
         HopV2Storage storage $ = _getHopV2Storage();
+        FeeMultipliers memory multipliers = $.feeMultipliers[_dstEid];
 
         uint256 dvnFee = ILayerZeroDVN($.DVN).getFee(_dstEid, 5, address(this), "");
+        if (multipliers.dvn != 0) dvnFee = (dvnFee * multipliers.dvn) / 10_000;
         bytes memory options = $.executorOptions[_dstEid];
         if (options.length == 0) options = hex"01001101000000000000000000000000000493E0";
         if (_data.length != 0) {
@@ -230,8 +239,10 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         // _composeMsg = 288 (abi.encode(HopMessage(0,0,0,bytes32(0),bytes32(0),new bytes(1)))) + _data.length
         // total = 32 + 8 + 32 + 288 + _data.length = 360 + _data.length
         uint256 executorFee = IExecutor($.EXECUTOR).getFee(_dstEid, address(this), 360 + _data.length, options);
+        if (multipliers.executor != 0) executorFee = (executorFee * multipliers.executor) / 10_000;
         uint256 totalFee = dvnFee * $.numDVNs + executorFee;
         uint256 treasuryFee = ILayerZeroTreasury($.TREASURY).getFee(address(this), _dstEid, totalFee, false);
+        if (multipliers.treasury != 0) treasuryFee = (treasuryFee * multipliers.treasury) / 10_000;
         finalFee = totalFee + treasuryFee;
         finalFee = (finalFee * (10_000 + $.hopFee)) / 10_000;
     }
@@ -381,14 +392,37 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         $.hopFee = _hopFee;
     }
 
+    /// @notice Set the multipliers applied to the DVN, executor and treasury fees in quoteHop for a remote EID
+    /// @dev 10_000 based so 10_000 = 1x; 0 = unset = 1x
+    function setFeeMultipliers(
+        uint32 _eid,
+        uint64 _dvn,
+        uint64 _executor,
+        uint64 _treasury
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        $.feeMultipliers[_eid] = FeeMultipliers({ dvn: _dvn, executor: _executor, treasury: _treasury });
+    }
+
     function setExecutorOptions(uint32 eid, bytes memory _options) public onlyRole(DEFAULT_ADMIN_ROLE) {
         HopV2Storage storage $ = _getHopV2Storage();
         $.executorOptions[eid] = _options;
     }
 
-    function recover(address _target, uint256 _value, bytes memory _data) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        (bool success, ) = _target.call{ value: _value }(_data);
-        require(success);
+    /// @param _tokenAddress The token to recover
+    /// @param _tokenAmount The amount to recover
+    function recoverERC20(address _tokenAddress, uint256 _tokenAmount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Recovered tokens are always sent to the caller
+        SafeERC20.safeTransfer(IERC20(_tokenAddress), msg.sender, _tokenAmount);
+        emit RecoveredERC20(_tokenAddress, _tokenAmount);
+    }
+
+    /// @param _ethAmount The amount to recover
+    function recoverETH(uint256 _ethAmount) external onlyRole(RECOVER_ETH_ROLE) {
+        // Recovered ETH is always sent to the caller
+        (bool success, ) = msg.sender.call{ value: _ethAmount }("");
+        if (!success) revert RecoverFailed();
+        emit RecoveredETH(_ethAmount);
     }
 
     function setMessageProcessed(
@@ -443,6 +477,11 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     function hopFee() external view returns (uint256) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.hopFee;
+    }
+
+    function feeMultipliers(uint32 eid) external view returns (FeeMultipliers memory) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        return $.feeMultipliers[eid];
     }
 
     function executorOptions(uint32 eid) external view returns (bytes memory) {
