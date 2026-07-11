@@ -72,6 +72,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     error InsufficientFee();
     error RefundFailed();
     error RecoverFailed();
+    error LengthMismatch();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -402,6 +403,19 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
         HopV2Storage storage $ = _getHopV2Storage();
         $.feeMultipliers[_eid] = FeeMultipliers({ dvn: _dvn, executor: _executor, treasury: _treasury });
+    }
+
+    /// @notice Set the quoteHop fee multipliers for multiple remote EIDs at once
+    /// @dev 10_000 based so 10_000 = 1x; 0 = unset = 1x
+    function setFeeMultipliersBatch(
+        uint32[] calldata _eids,
+        FeeMultipliers[] calldata _multipliers
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_eids.length != _multipliers.length) revert LengthMismatch();
+        HopV2Storage storage $ = _getHopV2Storage();
+        for (uint256 i = 0; i < _eids.length; i++) {
+            $.feeMultipliers[_eids[i]] = _multipliers[i];
+        }
     }
 
     function setExecutorOptions(uint32 eid, bytes memory _options) public onlyRole(DEFAULT_ADMIN_ROLE) {

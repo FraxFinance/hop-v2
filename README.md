@@ -560,6 +560,7 @@ bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 | `setNumDVNs(n)` | `DEFAULT_ADMIN_ROLE` | Set DVN count for fee |
 | `setHopFee(fee)` | `DEFAULT_ADMIN_ROLE` | Set service fee (10_000 based) |
 | `setFeeMultipliers(eid, dvn, executor, treasury)` | `DEFAULT_ADMIN_ROLE` | Per-remote-EID quoteHop fee multipliers (10_000 = 1x, 0 = unset = 1x) |
+| `setFeeMultipliersBatch(eids[], multipliers[])` | `DEFAULT_ADMIN_ROLE` | Batch variant: set multipliers for multiple EIDs at once |
 | `setExecutorOptions(eid, opts)` | `DEFAULT_ADMIN_ROLE` | Set per-chain executor options |
 | `setMessageProcessed(...)` | `DEFAULT_ADMIN_ROLE` | Manually mark message processed |
 | `recoverERC20(token, amount)` | `DEFAULT_ADMIN_ROLE` | Recover ERC20 tokens to the caller |

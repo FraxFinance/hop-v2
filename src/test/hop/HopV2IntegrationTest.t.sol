@@ -310,12 +310,55 @@ contract HopV2IntegrationTest is FraxTest {
         assertEq(fraxtalHop.quoteHop(ETHEREUM_EID, 400_000, ""), feeOtherEid, "other EIDs should be unaffected");
     }
 
+    function test_Integration_SetFeeMultipliers_Batch() public {
+        setUpFraxtal();
+
+        uint256 feeArbInitial = fraxtalHop.quoteHop(ARBITRUM_EID, 400_000, "");
+        uint256 feeEthInitial = fraxtalHop.quoteHop(ETHEREUM_EID, 400_000, "");
+
+        uint32[] memory eids = new uint32[](2);
+        eids[0] = ARBITRUM_EID;
+        eids[1] = ETHEREUM_EID;
+        FeeMultipliers[] memory multipliers = new FeeMultipliers[](2);
+        multipliers[0] = FeeMultipliers({ dvn: 20_000, executor: 20_000, treasury: 20_000 });
+        multipliers[1] = FeeMultipliers({ dvn: 15_000, executor: 15_000, treasury: 15_000 });
+
+        fraxtalHop.setFeeMultipliersBatch(eids, multipliers);
+
+        assertEq(fraxtalHop.feeMultipliers(ARBITRUM_EID).dvn, 20_000, "arbitrum multipliers should be stored");
+        assertEq(fraxtalHop.feeMultipliers(ETHEREUM_EID).dvn, 15_000, "ethereum multipliers should be stored");
+        assertGt(fraxtalHop.quoteHop(ARBITRUM_EID, 400_000, ""), feeArbInitial, "arbitrum fee should increase");
+        assertGt(fraxtalHop.quoteHop(ETHEREUM_EID, 400_000, ""), feeEthInitial, "ethereum fee should increase");
+    }
+
+    function test_Integration_SetFeeMultipliers_Batch_LengthMismatch() public {
+        setUpFraxtal();
+
+        uint32[] memory eids = new uint32[](2);
+        eids[0] = ARBITRUM_EID;
+        eids[1] = ETHEREUM_EID;
+        FeeMultipliers[] memory multipliers = new FeeMultipliers[](1);
+        multipliers[0] = FeeMultipliers({ dvn: 20_000, executor: 20_000, treasury: 20_000 });
+
+        vm.expectRevert(abi.encodeWithSignature("LengthMismatch()"));
+        fraxtalHop.setFeeMultipliersBatch(eids, multipliers);
+    }
+
     function test_Integration_SetFeeMultipliers_NotAdmin() public {
         setUpFraxtal();
 
         vm.prank(address(0xdead));
         vm.expectRevert();
         fraxtalHop.setFeeMultipliers(ARBITRUM_EID, 20_000, 20_000, 20_000);
+
+        uint32[] memory eids = new uint32[](1);
+        eids[0] = ARBITRUM_EID;
+        FeeMultipliers[] memory multipliers = new FeeMultipliers[](1);
+        multipliers[0] = FeeMultipliers({ dvn: 20_000, executor: 20_000, treasury: 20_000 });
+
+        vm.prank(address(0xdead));
+        vm.expectRevert();
+        fraxtalHop.setFeeMultipliersBatch(eids, multipliers);
     }
 
     // ============ Access Control Tests ============

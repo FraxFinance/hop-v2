@@ -51,6 +51,7 @@ interface IHopV2 {
     function setNumDVNs(uint32 _numDVNs) external;
     function setHopFee(uint256 _hopFee) external;
     function setFeeMultipliers(uint32 _eid, uint64 _dvn, uint64 _executor, uint64 _treasury) external;
+    function setFeeMultipliersBatch(uint32[] calldata _eids, FeeMultipliers[] calldata _multipliers) external;
     function setExecutorOptions(uint32 eid, bytes memory _options) external;
     function setRemoteHop(uint32 _eid, address _remoteHop) external;
     function setRemoteHop(uint32 _eid, bytes32 _remoteHop) external;
