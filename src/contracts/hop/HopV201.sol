@@ -21,7 +21,7 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     /// @dev keccak256("PAUSER_ROLE")
     bytes32 public constant PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
     /// @dev keccak256("RECOVER_ETH_ROLE")
-    bytes32 internal constant RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
+    bytes32 public constant RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
     /// @dev 10_000 = 100% (1x), 1 = 0.01%
     uint256 internal constant BPS = 10_000;
 
@@ -86,6 +86,10 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
 
     constructor() {
         _disableInitializers();
+    }
+
+    function version() external pure returns (string memory) {
+        return "2.0.1";
     }
 
     function __init_HopV201(

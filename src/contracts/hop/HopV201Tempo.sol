@@ -117,6 +117,10 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         _disableInitializers();
     }
 
+    function version() external pure returns (string memory) {
+        return "2.0.1";
+    }
+
     function __init_HopV201(
         uint32 _localEid,
         address _endpoint,
