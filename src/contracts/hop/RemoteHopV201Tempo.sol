@@ -25,10 +25,10 @@ import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 
 /// @title RemoteHopV201Tempo
 /// @notice V201 + Tempo variant of `RemoteHopV2Tempo`. Inherits `HopV201Tempo` so it
-///         exposes `RECOVER_ROLE` + `recoverERC20` (mirroring every other chain's V201
+///         exposes `recoverERC20` (mirroring every other chain's V201
 ///         deployment) while dropping the unbounded `recover(address,uint256,bytes)`
 ///         escape hatch from HopV2. Tempo settles fees in TIP20, so `recoverETH` is
-///         intentionally omitted.
+///         intentionally not implemented.
 ///
 ///         The Tempo proxy at `0x0000006D38568b00B457580b734e0076C62de659` keeps its
 ///         storage layout (shared ERC-7201 slot) and is upgraded in place from the
