@@ -94,7 +94,8 @@ contract HopV2IntegrationTest is FraxTest {
         arbitrumHop.grantRole(bytes32(0), 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496);
         vm.stopPrank();
 
-        payable(address(arbitrumHop)).call{ value: 100 ether }("");
+        (bool success, ) = payable(address(arbitrumHop)).call{ value: 100 ether }("");
+        assert(success);
     }
 
     receive() external payable {}
