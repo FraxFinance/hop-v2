@@ -160,7 +160,7 @@ abstract contract UpgradeHopV2 is Script {
         // The upgrade hasn't executed yet, so the proxy still runs old code
         // that doesn't expose RECOVER_ETH_ROLE. Use the known keccak256 value.
         bytes32 recoverRole = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
-        _grantRecoverRoleViaRoleHolder(recoverRole, timelock);
+        _grantRecoverRoleViaRoleHolder(recoverRole, 0x6cCF3F2Ca29591F90ADB403D67E4dcB49cEcC634);
     }
 
     function _grantRecoverRoleViaRoleHolder(bytes32 recoverRole, address grantee) internal {
