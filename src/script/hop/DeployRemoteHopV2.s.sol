@@ -82,20 +82,27 @@ abstract contract DeployRemoteHopV2 is Script {
         // grant Pauser roles to msig signers
         bytes32 PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
 
-        // carter
-        RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x54C5Ef136D02b95C4Ff217aF93FA63F9E4119919);
+        // grant Recover roles to msig signers
+        bytes32 RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
+
         // sam
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x17e06ce6914E3969f7BD37D8b2a563890cA1c96e);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x17e06ce6914E3969f7BD37D8b2a563890cA1c96e);
         // dhruvin
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x8d8290d49e88D16d81C6aDf6C8774eD88762274A);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x8d8290d49e88D16d81C6aDf6C8774eD88762274A);
         // travis
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0xcbc616D595D38483e6AdC45C7E426f44bF230928);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0xcbc616D595D38483e6AdC45C7E426f44bF230928);
         // thomas
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x381e2495e683868F693AA5B1414F712f21d34b40);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x381e2495e683868F693AA5B1414F712f21d34b40);
         // nader
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x6e74053a3798e0fC9a9775F7995316b27f21c4D2);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x6e74053a3798e0fC9a9775F7995316b27f21c4D2);
         // dennis
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0xC6EF452b0de9E95Ccb153c2A5A7a90154aab3419);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0xC6EF452b0de9E95Ccb153c2A5A7a90154aab3419);
 
         // transfer admin role to msig & RemoteAdmin and renounce from deployer
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), msig);
@@ -180,9 +187,9 @@ function deployRemoteHopV2(
 
     // deploy v201 implementation and upgrade the proxy to the new imp
     address hopV201 = address(
-        new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956c425b52b18422043c590a00c0) }()
+        new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956ce6ac70492feaa59e63000008) }()
     );
-    if (!isTest) require(hopV201 == 0xD3b7B923990000003500009264561127A87B00Bd, "hopV201 address mismatch");
+    if (!isTest) require(hopV201 == 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd, "hopV201 address mismatch");
 
     ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(hopV201, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);

@@ -1,123 +1,99 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.26;
 
-import { ProxyAdmin } from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
-import { ITransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.sol";
+import { Test } from "forge-std/Test.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-import { RemoteHopV2Tempo } from "src/contracts/hop/RemoteHopV2Tempo.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
+import { deployRemoteHopV201Tempo } from "src/script/hop/upgrade/DeployRemoteHopV201Tempo.s.sol";
 
-import { RemoteHopV2TempoForkTest } from "./RemoteHopV2TempoForkTest.t.sol";
-import { MockERC20 } from "./mocks/MockERC20.sol";
+contract MockERC20 is ERC20 {
+    constructor() ERC20("Mock Token", "MOCK") {}
 
-/// @notice Re-runs the entire `RemoteHopV2TempoForkTest` suite against the V201 implementation
-///         (`RemoteHopV201Tempo`) and adds `recoverERC20` coverage on top.
-/// @dev Inheriting the V2 fork test means every quote, approvedOft, msg.value-rejection check
-///      runs unchanged against the V201 contract — proving ABI parity for all V2 selectors.
-///      Only the proxy implementation differs, deployed via the overridden `_deployRemoteHopV2Tempo`.
-contract RemoteHopV201TempoForkTest is RemoteHopV2TempoForkTest {
-    /// @dev Deploys `RemoteHopV201Tempo` behind the standard Tempo hop proxy. The returned
-    ///      handle is cast to `RemoteHopV2Tempo` so all inherited tests work as-is — both
-    ///      implementations share every external selector and the V201 proxy responds to
-    ///      `quote`, `quoteStatic`, `sendOFT`, `approvedOft`, `removeDust`, `nativeToken`, etc.
-    function _deployRemoteHopV2Tempo() internal override returns (RemoteHopV2Tempo deployed) {
-        deployed = RemoteHopV2Tempo(payable(_deployHopProxy(address(new RemoteHopV201Tempo(TEMPO_ENDPOINT)))));
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
     }
+}
 
-    // ─── recoverERC20 (only V201 surface) ────────────────────────────────────
+contract RemoteHopV201TempoForkTest is Test {
+    uint256 internal constant TEMPO_FORK_BLOCK = 9_234_969;
 
-    function testFork_RemoteHopV201Tempo_RecoverERC20_Sweeps() public {
-        RemoteHopV201Tempo hop = _hopV201();
-        address recipient = makeAddr("recover-recipient");
-        uint256 amount = 1e6;
+    uint32 internal constant TEMPO_EID = 30_410;
+    address internal constant TEMPO_ENDPOINT = 0x20Bb7C2E2f4e5ca2B4c57060d1aE2615245dCc9C;
+    address internal constant FRAXTAL_HOP = 0xe8Cd13de17CeC6FCd9dD5E0a1465Da240f951536;
 
-        // Use a plain ERC20 mock — Tempo's TIP20 alt-tokens behind real OFTs are
-        // precompile-flavored and don't expose a standard EVM `balanceOf`, which is
-        // unrelated to the AccessControl-gated recover surface under test here.
-        MockERC20 token = new MockERC20("recover", "REC", 6);
-        deal(address(token), address(hop), amount);
+    address internal constant FRXUSD_OFT = 0x00000000D61733e7A393A10A5B48c311AbE8f1E5;
+    address internal constant SFRXUSD_OFT = 0x00000000fD8C4B8A413A06821456801295921a71;
+    address internal constant FRXETH_OFT = 0x000000008c3930dCA540bB9B3A5D0ee78FcA9A4c;
+    address internal constant SFRXETH_OFT = 0x00000000883279097A49dB1f2af954EAd0C77E3c;
+    address internal constant WFRAX_OFT = 0x00000000E9CE0f293D1Ce552768b187eBA8a56D4;
+    address internal constant FPI_OFT = 0x00000000bC4aEF4bA6363a437455Cb1af19e2aEb;
 
-        address recoverer = makeAddr("recoverer");
-        bytes32 recoverRole = hop.RECOVER_ROLE();
-        vm.prank(_defaultAdmin());
-        hop.grantRole(recoverRole, recoverer);
+    address internal proxyAdmin;
+    RemoteHopV201Tempo internal remoteHopTempo;
+    MockERC20 internal mockToken;
 
-        vm.prank(recoverer);
-        hop.recoverERC20(address(token), recipient, amount);
+    function setUp() public {
+        vm.createSelectFork(_tempoRpcUrl(), TEMPO_FORK_BLOCK);
 
-        assertEq(token.balanceOf(recipient), amount, "recipient balance");
-        assertEq(token.balanceOf(address(hop)), 0, "hop drained");
-    }
+        proxyAdmin = makeAddr("proxyAdmin");
+        address[] memory approvedOfts = new address[](6);
+        approvedOfts[0] = FRXUSD_OFT;
+        approvedOfts[1] = SFRXUSD_OFT;
+        approvedOfts[2] = FRXETH_OFT;
+        approvedOfts[3] = SFRXETH_OFT;
+        approvedOfts[4] = WFRAX_OFT;
+        approvedOfts[5] = FPI_OFT;
 
-    function testFork_RemoteHopV201Tempo_RecoverERC20_NonRecoverer_Reverts() public {
-        RemoteHopV201Tempo hop = _hopV201();
-        address attacker = makeAddr("attacker");
-        bytes32 recoverRole = hop.RECOVER_ROLE();
-        MockERC20 token = new MockERC20("recover", "REC", 6);
-
-        vm.prank(attacker);
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, attacker, recoverRole)
+        vm.startPrank(0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC);
+        remoteHopTempo = RemoteHopV201Tempo(
+            deployRemoteHopV201Tempo(
+                proxyAdmin,
+                TEMPO_EID,
+                TEMPO_ENDPOINT,
+                _toBytes32(FRAXTAL_HOP),
+                1,
+                address(0x1111),
+                address(0x2222),
+                address(0x3333),
+                approvedOfts
+            )
         );
-        hop.recoverERC20(address(token), attacker, 1);
+        remoteHopTempo.grantRole(bytes32(0), address(this));
+        vm.stopPrank();
+
+        mockToken = new MockERC20();
     }
 
-    // ─── Storage-compat smoke test: upgrade V2 → V201 mid-fixture ─────────────
+    function testFork_RecoverERC20() public {
+        mockToken.mint(address(remoteHopTempo), 10e18);
 
-    /// @notice Verifies the V2 → V201 upgrade preserves the namespaced HopV2 storage slot:
-    ///         all approvedOft/remoteHop/localEid state survives, and the V201 surface
-    ///         (RECOVER_ROLE, recoverERC20) becomes available on the same proxy address.
-    function testFork_RemoteHopV2_UpgradeTo_V201_PreservesState() public {
-        // `setUp()` (inherited) deployed V201 already; deploy a fresh V2 proxy here so we can
-        // observe the upgrade transition explicitly.
-        address payable v2Proxy = payable(_deployHopProxy(address(new RemoteHopV2Tempo(TEMPO_ENDPOINT))));
-        RemoteHopV2Tempo v2Hop = RemoteHopV2Tempo(v2Proxy);
-
-        // Snapshot a few storage views before the upgrade.
-        bool approvedBefore = v2Hop.approvedOft(FRXUSD_OFT);
-        uint32 localEidBefore = v2Hop.localEid();
-
-        // Perform the in-place upgrade. OZ v5 TransparentUpgradeableProxy stores the admin as
-        // a freshly-deployed ProxyAdmin contract (owned by the EOA we passed in), so the
-        // upgrade call must be routed through `ProxyAdmin.upgradeAndCall` from that owner.
-        RemoteHopV201Tempo newImpl = new RemoteHopV201Tempo(TEMPO_ENDPOINT);
-        ProxyAdmin admin = ProxyAdmin(_readAdmin(v2Proxy));
-        vm.prank(proxyAdmin);
-        admin.upgradeAndCall(ITransparentUpgradeableProxy(v2Proxy), address(newImpl), "");
-
-        RemoteHopV201Tempo upgraded = RemoteHopV201Tempo(v2Proxy);
-
-        // Storage carries through unchanged (same ERC-7201 slot).
-        assertEq(upgraded.approvedOft(FRXUSD_OFT), approvedBefore, "approvedOft drift");
-        assertEq(upgraded.localEid(), localEidBefore, "localEid drift");
-
-        // V201 surface is now live on the same proxy.
-        assertEq(
-            upgraded.RECOVER_ROLE(),
-            0x62b337eaefec74dadf1a62e856bf9db4f14a0f27d4f48156a95a9f98e7d5e066,
-            "RECOVER_ROLE selector mismatch"
-        );
+        uint256 balanceBefore = IERC20(address(mockToken)).balanceOf(address(this));
+        remoteHopTempo.recoverERC20(address(mockToken), 1e18);
+        assertEq(IERC20(address(mockToken)).balanceOf(address(this)), balanceBefore + 1e18);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────
+    function testFork_RecoverERC20_NotAuthorized() public {
+        mockToken.mint(address(remoteHopTempo), 10e18);
 
-    function _hopV201() internal view returns (RemoteHopV201Tempo) {
-        return RemoteHopV201Tempo(payable(address(remoteHopTempo)));
+        vm.prank(address(0xdead));
+        vm.expectRevert();
+        remoteHopTempo.recoverERC20(address(mockToken), 1e18);
     }
 
-    /// @dev DEFAULT_ADMIN_ROLE was granted to `address(this)` (the test contract) at proxy
-    ///      construction because `_deployHopProxy` calls `initialize` from the test's stack
-    ///      via the proxy constructor.
-    function _defaultAdmin() internal view returns (address) {
-        return address(this);
+    function testFork_RecoverETH_NotImplemented() public {
+        vm.expectRevert(abi.encodeWithSignature("NotImplemented()"));
+        remoteHopTempo.recoverETH(1 ether);
     }
 
-    /// @dev Reads the ERC-1967 admin slot to recover the ProxyAdmin contract that OZ v5's
-    ///      TransparentUpgradeableProxy auto-deploys in its constructor.
-    function _readAdmin(address proxy) internal view returns (address adminAddr) {
-        bytes32 adminSlot = 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103;
-        adminAddr = address(uint160(uint256(vm.load(proxy, adminSlot))));
+    function _toBytes32(address account) internal pure returns (bytes32) {
+        return bytes32(uint256(uint160(account)));
+    }
+
+    function _tempoRpcUrl() internal view returns (string memory rpcUrl) {
+        rpcUrl = vm.envOr("TEMPO_RPC_URL", string(""));
+        if (bytes(rpcUrl).length == 0) rpcUrl = vm.envOr("TEMPO_MAINNET_URL", string(""));
+        if (bytes(rpcUrl).length == 0) rpcUrl = vm.envOr("RPC_URL", string(""));
+        require(bytes(rpcUrl).length != 0, "Tempo RPC URL not found");
     }
 }

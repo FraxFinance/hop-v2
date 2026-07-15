@@ -13,7 +13,7 @@ import { IExecutor } from "src/contracts/interfaces/IExecutor.sol";
 
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { IHopV201, HopMessage } from "src/contracts/interfaces/IHopV201.sol";
+import { IHopV201, HopMessage, FeeMultipliers } from "src/contracts/interfaces/IHopV201.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
 // ====================================================================
@@ -29,10 +29,10 @@ import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 
 /// @title HopV201Tempo
 /// @notice Tempo-flavored sibling of `HopV201`. Behaviorally identical to `HopV201`
-///         (RECOVER_ROLE-gated `recoverERC20`, no unbounded `recover()`), with two
+///         (DEFAULT_ADMIN_ROLE-gated `recoverERC20`, no unbounded `recover()`), with two
 ///         deliberate divergences for Tempo:
 ///
-///         1. `recoverETH` is intentionally omitted. Tempo settles all fees in TIP20 /
+///         1. `recoverETH` is intentionally not implemented. Tempo settles all fees in TIP20 /
 ///            ERC20 via EndpointV2Alt, so the contract has no native ETH surface to recover.
 ///
 ///         2. `sendOFT(...)`, `quote(...)`, and `_sendToDestination(...)` are `virtual`
@@ -50,8 +50,8 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
     uint32 internal constant FRAXTAL_EID = 30_255;
     /// @dev keccak256("PAUSER_ROLE")
     bytes32 public constant PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
-    /// @dev keccak256("RECOVER_ROLE")
-    bytes32 public constant RECOVER_ROLE = 0x62b337eaefec74dadf1a62e856bf9db4f14a0f27d4f48156a95a9f98e7d5e066;
+    /// @dev 10_000 = 100% (1x), 1 = 0.01%
+    uint256 internal constant BPS = 10_000;
 
     struct HopV2Storage {
         /// @dev EID of this chain
@@ -78,6 +78,8 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         address DVN;
         /// @dev Address of LZ treasury
         address TREASURY;
+        /// @dev Multipliers applied to the quoteHop fee components per remote EID (10_000 = 1x, 0 = unset = 1x)
+        mapping(uint32 eid => FeeMultipliers multipliers) feeMultipliers;
     }
 
     // keccak256(abi.encode(uint256(keccak256("frax.storage.HopV2")) - 1)) & ~bytes32(uint256(0xff))
@@ -91,6 +93,8 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
 
     event SendOFT(address oft, address indexed sender, uint32 indexed dstEid, bytes32 indexed to, uint256 amount);
     event MessageHash(address oft, uint32 indexed srcEid, uint64 indexed nonce, bytes32 indexed composeFrom);
+    event RecoveredERC20(address token, uint256 amount);
+    event RecoveredETH(uint256 amount);
 
     error InvalidOFT();
     error HopPaused();
@@ -98,6 +102,9 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
     error NotAuthorized();
     error InsufficientFee();
     error RefundFailed();
+    error RecoverFailed();
+    error LengthMismatch();
+    error NotImplemented();
 
     modifier onlyAuthorized() {
         if (!(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(PAUSER_ROLE, msg.sender))) {
@@ -108,6 +115,10 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
 
     constructor() {
         _disableInitializers();
+    }
+
+    function version() external pure returns (string memory) {
+        return "2.0.1";
     }
 
     function __init_HopV201(
@@ -248,8 +259,10 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         bytes memory _data
     ) public view override returns (uint256 finalFee) {
         HopV2Storage storage $ = _getHopV2Storage();
+        FeeMultipliers memory multipliers = $.feeMultipliers[_dstEid];
 
         uint256 dvnFee = ILayerZeroDVN($.DVN).getFee(_dstEid, 5, address(this), "");
+        if (multipliers.dvn != 0) dvnFee = (dvnFee * multipliers.dvn) / BPS;
         bytes memory options = $.executorOptions[_dstEid];
         if (options.length == 0) options = hex"01001101000000000000000000000000000493E0";
         if (_data.length != 0) {
@@ -263,10 +276,12 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         // _composeMsg = 288 (abi.encode(HopMessage(0,0,0,bytes32(0),bytes32(0),new bytes(1)))) + _data.length
         // total = 32 + 8 + 32 + 288 + _data.length = 360 + _data.length
         uint256 executorFee = IExecutor($.EXECUTOR).getFee(_dstEid, address(this), 360 + _data.length, options);
+        if (multipliers.executor != 0) executorFee = (executorFee * multipliers.executor) / BPS;
         uint256 totalFee = dvnFee * $.numDVNs + executorFee;
         uint256 treasuryFee = ILayerZeroTreasury($.TREASURY).getFee(address(this), _dstEid, totalFee, false);
+        if (multipliers.treasury != 0) treasuryFee = (treasuryFee * multipliers.treasury) / BPS;
         finalFee = totalFee + treasuryFee;
-        finalFee = (finalFee * (10_000 + $.hopFee)) / 10_000;
+        finalFee = (finalFee * (BPS + $.hopFee)) / BPS;
     }
 
     /// @notice Remove the dust amount of OFT so that the message passed is the message received
@@ -406,16 +421,46 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         _getHopV2Storage().hopFee = _hopFee;
     }
 
+    /// @notice Set the multipliers applied to the DVN, executor and treasury fees in quoteHop for a remote EID
+    /// @dev 10_000 based so 10_000 = 1x; 0 = unset = 1x
+    function setFeeMultipliers(
+        uint32 _eid,
+        uint64 _dvn,
+        uint64 _executor,
+        uint64 _treasury
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        $.feeMultipliers[_eid] = FeeMultipliers({ dvn: _dvn, executor: _executor, treasury: _treasury });
+    }
+
+    /// @notice Set the quoteHop fee multipliers for multiple remote EIDs at once
+    /// @dev 10_000 based so 10_000 = 1x; 0 = unset = 1x
+    function setFeeMultipliersBatch(
+        uint32[] calldata _eids,
+        FeeMultipliers[] calldata _multipliers
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_eids.length != _multipliers.length) revert LengthMismatch();
+        HopV2Storage storage $ = _getHopV2Storage();
+        for (uint256 i = 0; i < _eids.length; i++) {
+            $.feeMultipliers[_eids[i]] = _multipliers[i];
+        }
+    }
+
     function setExecutorOptions(uint32 eid, bytes memory _options) public onlyRole(DEFAULT_ADMIN_ROLE) {
         _getHopV2Storage().executorOptions[eid] = _options;
     }
 
-    /// @notice Recover an ERC20 / TIP20 token stuck on this contract.
-    /// @dev Mirrors `HopV201.recoverERC20`. Tempo has no native ETH surface so `recoverETH`
-    ///      is intentionally omitted — there is nothing to recover on a chain whose fees
-    ///      are settled in TIP20 via EndpointV2Alt.
-    function recoverERC20(address erc20, address to, uint256 amount) external onlyRole(RECOVER_ROLE) {
-        SafeERC20.safeTransfer(IERC20(erc20), to, amount);
+    /// @param _tokenAddress The token to recover
+    /// @param _tokenAmount The amount to recover
+    function recoverERC20(address _tokenAddress, uint256 _tokenAmount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Recovered tokens are always sent to the caller
+        SafeERC20.safeTransfer(IERC20(_tokenAddress), msg.sender, _tokenAmount);
+        emit RecoveredERC20(_tokenAddress, _tokenAmount);
+    }
+
+    /// @dev not implemented
+    function recoverETH(uint256) external pure override {
+        revert NotImplemented();
     }
 
     function setMessageProcessed(
@@ -462,6 +507,11 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
 
     function hopFee() external view returns (uint256) {
         return _getHopV2Storage().hopFee;
+    }
+
+    function feeMultipliers(uint32 eid) external view returns (FeeMultipliers memory) {
+        HopV2Storage storage $ = _getHopV2Storage();
+        return $.feeMultipliers[eid];
     }
 
     function executorOptions(uint32 eid) external view returns (bytes memory) {
