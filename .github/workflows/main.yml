@@ -14,6 +14,7 @@ jobs:
       BASE_MAINNET_URL: ${{ secrets.BASE_MAINNET_URL }}
       FRAXTAL_MAINNET_URL: ${{ secrets.FRAXTAL_MAINNET_URL }}
       ARBITRUM_MAINNET_URL: ${{ secrets.ARBITRUM_MAINNET_URL }}
+      TEMPO_RPC_URL: ${{ secrets.TEMPO_RPC_URL }}
       FOUNDRY_PROFILE: "test"
     steps:
       - uses: actions/setup-node@v2
