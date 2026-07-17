@@ -56,7 +56,7 @@ contract HopV201RecoverTest is FraxTest {
 
         FraxtalHopV201 hop = FraxtalHopV201(proxy);
         vm.startPrank(DEPLOYER);
-        hop.grantRole(hop.RECOVER_ROLE(), DEPLOYER);
+        hop.grantRole(hop.RECOVER_ETH_ROLE(), DEPLOYER);
         vm.stopPrank();
 
         return hop;
@@ -88,7 +88,7 @@ contract HopV201RecoverTest is FraxTest {
 
         RemoteHopV201 hop = RemoteHopV201(proxy);
         vm.startPrank(DEPLOYER);
-        hop.grantRole(hop.RECOVER_ROLE(), DEPLOYER);
+        hop.grantRole(hop.RECOVER_ETH_ROLE(), DEPLOYER);
         vm.stopPrank();
 
         return hop;
@@ -99,14 +99,13 @@ contract HopV201RecoverTest is FraxTest {
     function test_FraxtalHopV201_recoverERC20() public {
         FraxtalHopV201 fraxtalHop = setUpFraxtalV201();
 
-        address recipient = address(0xBEEF);
         uint256 amount = 1e18;
         deal(frxUSD_FRAXTAL, address(fraxtalHop), amount);
 
         vm.prank(DEPLOYER);
-        fraxtalHop.recoverERC20(frxUSD_FRAXTAL, recipient, amount);
+        fraxtalHop.recoverERC20(frxUSD_FRAXTAL, amount);
 
-        assertEq(IERC20(frxUSD_FRAXTAL).balanceOf(recipient), amount);
+        assertEq(IERC20(frxUSD_FRAXTAL).balanceOf(DEPLOYER), amount);
         assertEq(IERC20(frxUSD_FRAXTAL).balanceOf(address(fraxtalHop)), 0);
     }
 
@@ -122,24 +121,23 @@ contract HopV201RecoverTest is FraxTest {
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
                 nonAdmin,
-                fraxtalHop.RECOVER_ROLE()
+                fraxtalHop.DEFAULT_ADMIN_ROLE()
             )
         );
-        fraxtalHop.recoverERC20(frxUSD_FRAXTAL, nonAdmin, amount);
+        fraxtalHop.recoverERC20(frxUSD_FRAXTAL, amount);
         vm.stopPrank();
     }
 
     function test_RemoteHopV201_recoverERC20() public {
         RemoteHopV201 remoteHop = setUpArbitrumV201();
 
-        address recipient = address(0xBEEF);
         uint256 amount = 1e18;
         deal(frxUSD_ARB, address(remoteHop), amount);
 
         vm.prank(DEPLOYER);
-        remoteHop.recoverERC20(frxUSD_ARB, recipient, amount);
+        remoteHop.recoverERC20(frxUSD_ARB, amount);
 
-        assertEq(IERC20(frxUSD_ARB).balanceOf(recipient), amount);
+        assertEq(IERC20(frxUSD_ARB).balanceOf(DEPLOYER), amount);
         assertEq(IERC20(frxUSD_ARB).balanceOf(address(remoteHop)), 0);
     }
 
@@ -155,10 +153,10 @@ contract HopV201RecoverTest is FraxTest {
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
                 nonAdmin,
-                remoteHop.RECOVER_ROLE()
+                remoteHop.DEFAULT_ADMIN_ROLE()
             )
         );
-        remoteHop.recoverERC20(frxUSD_ARB, nonAdmin, amount);
+        remoteHop.recoverERC20(frxUSD_ARB, amount);
         vm.stopPrank();
     }
 
@@ -167,16 +165,15 @@ contract HopV201RecoverTest is FraxTest {
     function test_FraxtalHopV201_recoverETH() public {
         FraxtalHopV201 fraxtalHop = setUpFraxtalV201();
 
-        address recipient = address(0xBEEF);
         uint256 amount = 1 ether;
         vm.deal(address(fraxtalHop), amount);
 
-        uint256 recipientBefore = recipient.balance;
+        uint256 deployerBefore = DEPLOYER.balance;
 
         vm.prank(DEPLOYER);
-        fraxtalHop.recoverETH(recipient, amount);
+        fraxtalHop.recoverETH(amount);
 
-        assertEq(recipient.balance, recipientBefore + amount);
+        assertEq(DEPLOYER.balance, deployerBefore + amount);
         assertEq(address(fraxtalHop).balance, 0);
     }
 
@@ -192,26 +189,25 @@ contract HopV201RecoverTest is FraxTest {
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
                 nonAdmin,
-                fraxtalHop.RECOVER_ROLE()
+                fraxtalHop.RECOVER_ETH_ROLE()
             )
         );
-        fraxtalHop.recoverETH(nonAdmin, amount);
+        fraxtalHop.recoverETH(amount);
         vm.stopPrank();
     }
 
     function test_RemoteHopV201_recoverETH() public {
         RemoteHopV201 remoteHop = setUpArbitrumV201();
 
-        address recipient = address(0xBEEF);
         uint256 amount = 1 ether;
         vm.deal(address(remoteHop), amount);
 
-        uint256 recipientBefore = recipient.balance;
+        uint256 deployerBefore = DEPLOYER.balance;
 
         vm.prank(DEPLOYER);
-        remoteHop.recoverETH(recipient, amount);
+        remoteHop.recoverETH(amount);
 
-        assertEq(recipient.balance, recipientBefore + amount);
+        assertEq(DEPLOYER.balance, deployerBefore + amount);
         assertEq(address(remoteHop).balance, 0);
     }
 
@@ -227,10 +223,10 @@ contract HopV201RecoverTest is FraxTest {
             abi.encodeWithSelector(
                 IAccessControl.AccessControlUnauthorizedAccount.selector,
                 nonAdmin,
-                remoteHop.RECOVER_ROLE()
+                remoteHop.RECOVER_ETH_ROLE()
             )
         );
-        remoteHop.recoverETH(nonAdmin, amount);
+        remoteHop.recoverETH(amount);
         vm.stopPrank();
     }
 }
