@@ -11,6 +11,9 @@ contract RemoteVaultDepositTest is FraxTest {
     RemoteVaultDeposit vaultDeposit;
     RemoteVaultHop remoteVaultHop;
 
+    // Storage var (not local) to avoid foundry-zksync optimizer re-evaluating block.number
+    uint256 startBlock;
+
     uint32 constant VAULT_CHAIN_ID = 30_255;
     address constant VAULT_ADDRESS = 0x8EdA613EC96992D3C42BCd9aC2Ae58a92929Ceb2;
     address constant ASSET = 0xFc00000000000000000000000000000000000001;
@@ -155,12 +158,14 @@ contract RemoteVaultDepositTest is FraxTest {
     }
 
     function test_PricePerShare_Interpolation() public {
+        startBlock = block.number;
+
         // Set initial price
         vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 1e18);
 
         // Move to block 50 and set new price
-        vm.roll(block.number + 50);
+        vm.roll(startBlock + 50);
         vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp + 50), 1.1e18);
 
@@ -168,28 +173,30 @@ contract RemoteVaultDepositTest is FraxTest {
         assertEq(pps, 1e18, "Should be at previous price at update block");
 
         // Move to block 100 (halfway through interpolation)
-        vm.roll(block.number + 50);
+        vm.roll(startBlock + 100);
         pps = vaultDeposit.pricePerShare();
         assertApproxEqAbs(pps, 1.05e18, 0.01e18, "Should be halfway interpolated");
 
         // Move past interpolation period
-        vm.roll(block.number + 100);
+        vm.roll(startBlock + 200);
         pps = vaultDeposit.pricePerShare();
         assertEq(pps, 1.1e18, "Should be at new price after interpolation");
     }
 
     function test_PricePerShare_NegativeInterpolation() public {
+        startBlock = block.number;
+
         // Set initial price
         vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp), 1.1e18);
 
         // Move forward and set lower price
-        vm.roll(block.number + 50);
+        vm.roll(startBlock + 50);
         vm.prank(vaultDeposit.owner());
         vaultDeposit.setPricePerShare(uint64(block.timestamp + 50), 1e18);
 
         // Move to halfway point
-        vm.roll(block.number + 50);
+        vm.roll(startBlock + 100);
         uint256 pps = vaultDeposit.pricePerShare();
         assertApproxEqAbs(pps, 1.05e18, 0.01e18, "Should interpolate downward");
     }

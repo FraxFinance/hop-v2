@@ -144,7 +144,15 @@ contract RemoteHopV2TempoForkTest is Test {
         return 10 * (10 ** decimals);
     }
 
-    function _deployRemoteHopV2Tempo() internal returns (RemoteHopV2Tempo deployed) {
+    function _deployRemoteHopV2Tempo() internal virtual returns (RemoteHopV2Tempo deployed) {
+        deployed = RemoteHopV2Tempo(payable(_deployHopProxy(address(new RemoteHopV2Tempo(TEMPO_ENDPOINT)))));
+    }
+
+    /// @dev Builds the standard initialize() calldata + proxy for any Tempo hop impl whose
+    ///      `initialize(uint32,address,bytes32,uint32,address,address,address,address[])`
+    ///      signature matches `RemoteHopV2Tempo`. Subclasses (e.g. V201) override
+    ///      `_deployRemoteHopV2Tempo()` to swap the implementation while reusing this helper.
+    function _deployHopProxy(address implementation) internal returns (address proxy) {
         address[] memory approvedOfts = new address[](6);
         approvedOfts[0] = FRXUSD_OFT;
         approvedOfts[1] = SFRXUSD_OFT;
@@ -153,7 +161,6 @@ contract RemoteHopV2TempoForkTest is Test {
         approvedOfts[4] = WFRAX_OFT;
         approvedOfts[5] = FPI_OFT;
 
-        RemoteHopV2Tempo implementation = new RemoteHopV2Tempo(TEMPO_ENDPOINT);
         bytes memory initializeArgs = abi.encodeWithSignature(
             "initialize(uint32,address,bytes32,uint32,address,address,address,address[])",
             TEMPO_EID,
@@ -166,13 +173,7 @@ contract RemoteHopV2TempoForkTest is Test {
             approvedOfts
         );
 
-        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
-            address(implementation),
-            proxyAdmin,
-            initializeArgs
-        );
-
-        deployed = RemoteHopV2Tempo(payable(address(proxy)));
+        proxy = address(new TransparentUpgradeableProxy(implementation, proxyAdmin, initializeArgs));
     }
 
     function _toBytes32(address account) internal pure returns (bytes32) {
