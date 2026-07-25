@@ -66,6 +66,9 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
         console.log("remote routes:", routes.length);
 
         // ---- Remote chains: sendOFT compose message to each RemoteAdmin ----
+        // Tracks the last successful quote so blocked pathways (BlockedMessageLib)
+        // can reuse it, matching the skipCall/lastFee pattern in SetExecutorOptionsBase.
+        uint256 lastFee;
         for (uint256 i = 0; i < routes.length; i++) {
             RemoteAdminRoute memory route = routes[i];
             HopV2Target storage target = _hopV2TargetFor(route.chainId);
@@ -88,12 +91,14 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
             // compose data = abi.encode(remoteHop, setFeeMultipliersBatch calldata)
             bytes memory composeData = abi.encode(target.hop, batchCalldata);
 
-            // Quote the Fraxtal-leg fee. Some pathways revert (e.g. BlockedMessageLib
-            // or unsupported eid) — skip those chains but still emit the tx so it can
-            // be submitted later once the pathway is configured (matches the
-            // skipCall pattern in SetExecutorOptionsBase).
+            // Quote the Fraxtal-leg fee. Some pathways are configured with
+            // BlockedMessageLib as the send library (Fraxtal => Scroll / Mode /
+            // Berachain at the time of writing), which makes Endpoint.quote()
+            // revert with LZ_NotImplemented(). Reuse the last successful fee so
+            // the tx can still be queued — matches the skipCall/lastFee convention
+            // in SetExecutorOptionsBase.
             uint256 fee;
-            bool quoted;
+            bool reused;
             try
                 IHopV2(FRAXTAL_HOP).quote({
                     _oft: FRXUSD_LOCKBOX,
@@ -105,9 +110,12 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
                 })
             returns (uint256 q) {
                 fee = (q * feeBufferBps) / 100;
-                quoted = true;
+                lastFee = fee;
             } catch {
-                console.log("  quote reverted for", target.name, "- emitting tx with fee=0 (submit later)");
+                console.log("  quote reverted for", target.name, "- reusing last fee");
+                require(lastFee != 0, "no prior fee to reuse for blocked pathway");
+                fee = lastFee;
+                reused = true;
             }
 
             bytes memory localCall = abi.encodeWithSignature(
@@ -142,10 +150,11 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
             );
 
             new SafeTxHelper().writeTxs(txs, filename);
-            if (quoted) {
+            if (reused) {
                 console.log("Wrote:", filename, "fee=", fee);
+                console.log("  (reused last fee - pathway blocked)");
             } else {
-                console.log("Wrote:", filename, "fee=0 (quote reverted - submit later)");
+                console.log("Wrote:", filename, "fee=", fee);
             }
         }
 
