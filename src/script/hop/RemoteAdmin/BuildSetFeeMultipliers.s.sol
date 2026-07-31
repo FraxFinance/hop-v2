@@ -33,8 +33,21 @@ import { HopConstants, HopV2Target, RemoteAdminRoute } from "src/script/hop/HopC
 ///   - INPUT_DIR: directory containing <Chain>.json files (default: out/feeMultipliers)
 ///   - OUTPUT_DIR: directory for per-chain Safe JSONs
 ///     (default: src/script/hop/RemoteAdmin/txs/SetFeeMultipliers)
-///   - FEE_BUFFER_BPS: extra safety margin applied on top of the quoted fee
-///     (default: 150 = +50%, matching the existing RemoteAdmin scripts)
+///   - FEE_BUFFER_PCT: percent of the quoted fee to attach as msg.value
+///     (default: 400 = 4x the quote).
+///
+///     A Safe tx sits in the queue for days before it is signed and executed,
+///     and the quote tracks destination gas prices through the LZ price feeds.
+///     That drift is fast: on 2026-07-31 the Fraxtal => Linea quote rose 25% in
+///     twenty minutes, which alone would have eaten half of a 2x buffer.
+///
+///     The failure modes are wildly asymmetric, so the buffer is deliberately
+///     generous. Undershooting reverts the tx with InsufficientFee and costs a
+///     full re-generate / re-sign / re-queue cycle across the msig signers.
+///     Overshooting costs nothing: HopV201._handleMsgValue() refunds
+///     `msg.value - sendFee` to msg.sender (the Fraxtal msig) inside the same
+///     transaction, so the only requirement is that the Safe holds the stated
+///     value at execution time.
 ///
 /// Usage:
 ///   forge script src/script/hop/RemoteAdmin/BuildSetFeeMultipliers.s.sol \
@@ -54,7 +67,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
     function run() external {
         string memory inputDir = _inputDir();
         string memory outputDir = _outputDir();
-        uint256 feeBufferBps = _feeBufferBps();
+        uint256 feeBufferPct = _feeBufferPct();
 
         vm.createDir(outputDir, true);
         RemoteAdminRoute[] storage routes = _remoteAdminRoutes();
@@ -62,13 +75,15 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
         console.log("=== BuildSetFeeMultipliers ===");
         console.log("input dir :", inputDir);
         console.log("output dir:", outputDir);
-        console.log("fee buffer:", feeBufferBps, "bps");
+        console.log("fee buffer:", feeBufferPct, "% of quote");
         console.log("remote routes:", routes.length);
 
         // ---- Remote chains: sendOFT compose message to each RemoteAdmin ----
         // Tracks the last successful quote so blocked pathways (BlockedMessageLib)
         // can reuse it, matching the skipCall/lastFee pattern in SetExecutorOptionsBase.
         uint256 lastFee;
+        uint256 totalValue;
+        uint256 blockedCount;
         for (uint256 i = 0; i < routes.length; i++) {
             RemoteAdminRoute memory route = routes[i];
             HopV2Target storage target = _hopV2TargetFor(route.chainId);
@@ -109,7 +124,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
                     _data: composeData
                 })
             returns (uint256 q) {
-                fee = (q * feeBufferBps) / 100;
+                fee = (q * feeBufferPct) / 100;
                 lastFee = fee;
             } catch {
                 console.log("  quote reverted for", target.name, "- reusing last fee");
@@ -150,11 +165,15 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
             );
 
             new SafeTxHelper().writeTxs(txs, filename);
+            totalValue += fee;
+            console.log("Wrote:", filename, "fee=", fee);
             if (reused) {
-                console.log("Wrote:", filename, "fee=", fee);
-                console.log("  (reused last fee - pathway blocked)");
-            } else {
-                console.log("Wrote:", filename, "fee=", fee);
+                blockedCount++;
+                console.log(
+                    "  !! reused last fee - Fraxtal =>",
+                    target.name,
+                    "pathway is blocked, do NOT queue this file"
+                );
             }
         }
 
@@ -182,6 +201,10 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
         }
 
         console.log("=== done ===");
+        console.log("total msg.value across all files (wei):", totalValue);
+        console.log("blocked pathways written with a reused fee:", blockedCount);
+        console.log("The Fraxtal msig must hold at least that much FRAX; the surplus over the");
+        console.log("live quote is refunded to the msig by HopV201._handleMsgValue().");
     }
 
     // -----------------------------------------------------------------------
@@ -198,8 +221,12 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
             : "src/script/hop/RemoteAdmin/txs/SetFeeMultipliers";
     }
 
-    function _feeBufferBps() internal view returns (uint256 bps) {
-        bps = vm.envExists("FEE_BUFFER_BPS") ? vm.envUint("FEE_BUFFER_BPS") : 150;
+    /// @dev Percent (not bps) of the quote to attach as msg.value. 100 = exact quote,
+    ///      200 = 2x. Bounded so a bps-shaped value (e.g. 10_000) cannot silently
+    ///      overpay by 100x.
+    function _feeBufferPct() internal view returns (uint256 pct) {
+        pct = vm.envExists("FEE_BUFFER_PCT") ? vm.envUint("FEE_BUFFER_PCT") : 400;
+        require(pct >= 100 && pct <= 1000, "FEE_BUFFER_PCT out of range (100..1000)");
     }
 
     /// @dev Maps HopConstants chain names to the filename stems used by
