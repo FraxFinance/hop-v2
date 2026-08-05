@@ -5,7 +5,7 @@
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
 
 [profile.default]
-fs_permissions = [{ access = "read-write", path = "src/script/hop/upgrade/txs/" }, { access = "read-write", path = "src/script/hop/RemoteAdmin/txs/" }]
+fs_permissions = [{ access = "read-write", path = "src/script/hop/upgrade/txs/" }, { access = "read-write", path = "src/script/hop/RemoteAdmin/txs/" }, { access = "read", path = "out/feeMultipliers/" }]
 
 # The source directory
 src = 'src/contracts'
