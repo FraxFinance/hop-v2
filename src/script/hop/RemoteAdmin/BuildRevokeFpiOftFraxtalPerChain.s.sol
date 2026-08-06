@@ -24,7 +24,6 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
     address public constant FRXUSD_LOCKBOX = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
     address public constant FPI_LOCKBOX = 0x75c38D46001b0F8108c4136216bd2694982C20FC;
     uint32 public constant FRAXTAL_EID = 30_255;
-    uint128 public constant COMPOSE_GAS = 400_000;
 
     /// @dev FPI OFT per chainId. Unlike the other Frax OFTs these are not all deterministic,
     ///      so each is pinned explicitly. Every entry was verified onchain via
@@ -81,6 +80,10 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
             bytes memory remoteCall = abi.encodeCall(IHopV2.setApprovedOft, (fpiOft, false));
             bytes memory composeData = abi.encode(target.hop, remoteCall);
 
+            // Gas the destination compose runs with. Chains with non-EVM gas metering need more
+            // than the 400k default - see composeGasOverrides in HopConstants.
+            uint128 composeGas = _composeGasFor(route.chainId);
+
             // Routes whose LZ send config has been torn down (deprecated chains) revert here
             // with LZ_NotImplemented(). Skip them rather than aborting the whole run - a batch
             // for such a chain could never be delivered anyway.
@@ -91,7 +94,7 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
                     _dstEid: route.eid,
                     _recipient: bytes32(uint256(uint160(remoteAdmin))),
                     _amountLD: 0,
-                    _dstGas: COMPOSE_GAS,
+                    _dstGas: composeGas,
                     _data: composeData
                 })
             returns (uint256 quoted) {
@@ -112,7 +115,7 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
                 route.eid,
                 bytes32(uint256(uint160(remoteAdmin))),
                 uint256(0),
-                COMPOSE_GAS,
+                composeGas,
                 composeData
             );
 
@@ -140,6 +143,7 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
             new SafeTxHelper().writeTxs(txs, filename);
             console.log("Wrote:", filename);
             console.log("  fpiOft:", fpiOft);
+            console.log("  composeGas:", composeGas);
             console.log("  fee (wei):", fee);
         }
 
