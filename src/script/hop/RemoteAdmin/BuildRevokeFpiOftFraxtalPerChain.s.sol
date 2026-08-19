@@ -17,6 +17,7 @@ import { HopConstants, HopV2Target, RemoteAdminRoute } from "src/script/hop/HopC
 // Optional env vars:
 // - OUTPUT_DIR: output directory for per-chain JSON files
 // - INCLUDE_FRAXTAL: "true" to also emit the Fraxtal-local direct revoke (default false)
+// - FEE_BUFFER_BPS: multiplier on the live LZ quote, in bps (default 15000 = 1.5x)
 //
 // OUTPUT_DIR=src/script/hop/RemoteAdmin/txs/RevokeFpiOftAllChains forge script src/script/hop/RemoteAdmin/BuildRevokeFpiOftFraxtalPerChain.s.sol --rpc-url https://rpc.frax.com --ffi
 contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
@@ -66,6 +67,9 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
         string memory outputDir = _outputDir();
         vm.createDir(outputDir, true);
 
+        uint256 feeBufferBps = _feeBufferBps();
+        console.log("Fee buffer (bps):", feeBufferBps);
+
         RemoteAdminRoute[] storage routes = _remoteAdminRoutes();
         uint256 totalFee;
         uint256 written;
@@ -105,7 +109,7 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
                 continue;
             }
 
-            fee = (fee * 150) / 100;
+            fee = (fee * feeBufferBps) / 10_000;
             totalFee += fee;
             written++;
 
@@ -185,5 +189,17 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
 
     function _includeFraxtal() internal view returns (bool include) {
         include = vm.envExists("INCLUDE_FRAXTAL") ? vm.envBool("INCLUDE_FRAXTAL") : false;
+    }
+
+    /// @notice Multiplier applied to the live LayerZero quote, in basis points.
+    /// @dev The quote is a snapshot of destination gas pricing. A batch that sits in the msig
+    ///      queue while that price rises reverts with `InsufficientFee()` - the 1.5x default was
+    ///      not enough for Ethereum, whose quote rose ~4.4x over 13 queued days. Overpaying is
+    ///      nearly free: `HopV2._handleMsgValue` refunds the excess to the sender, so the only
+    ///      cost of a wide buffer is the refund call's gas and the FRAX being reserved until
+    ///      execution. Widen this rather than re-quoting a queue that signers have already signed.
+    function _feeBufferBps() internal view returns (uint256 bps) {
+        bps = vm.envExists("FEE_BUFFER_BPS") ? vm.envUint("FEE_BUFFER_BPS") : 15_000;
+        require(bps >= 10_000, "FEE_BUFFER_BPS must be at least 10000 (1x)");
     }
 }
