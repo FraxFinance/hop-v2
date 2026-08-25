@@ -10,6 +10,7 @@ import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 
 import { HopV201Tempo } from "src/contracts/hop/HopV201Tempo.sol";
 import { HopMessage } from "src/contracts/interfaces/IHopV201.sol";
+import { IRemoteHopV201Tempo } from "src/contracts/interfaces/IRemoteHopV201Tempo.sol";
 import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 
 // ====================================================================
@@ -34,7 +35,17 @@ import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 ///         storage layout (shared ERC-7201 slot) and is upgraded in place from the
 ///         previous `RemoteHopV2Tempo` implementation.
 /// @author Frax Finance: https://github.com/FraxFinance
-contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
+contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer, IRemoteHopV201Tempo {
+    struct FeeInclusivePlan {
+        uint256 amountToBridgeLD;
+        address feeToken;
+        address paymentToken;
+        uint256 feeAmountLD;
+        uint256 nativeFee;
+        SendParam sendParam;
+        MessagingFee messagingFee;
+    }
+
     event Hop(address oft, address indexed recipient, uint256 amount);
 
     constructor(address _endpoint) TempoGasTokenBase(_endpoint) {
@@ -101,6 +112,103 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         emit SendOFT(_oft, msg.sender, _dstEid, _recipient, _amountLD);
     }
 
+    /// @inheritdoc IRemoteHopV201Tempo
+    function sendOFTFeeInclusive(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountToBridgeLD,
+        uint256 _maxAmountInLD,
+        uint128 _dstGas,
+        bytes memory _data
+    ) external payable override {
+        if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
+
+        HopV2Storage storage $ = _getHopV2Storage();
+        if ($.paused) revert HopPaused();
+        if (!$.approvedOft[_oft]) revert InvalidOFT();
+
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: $.localEid,
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+        FeeInclusivePlan memory plan = _quoteFeeInclusive(_oft, hopMessage, _amountToBridgeLD);
+        uint256 totalAmountInLD = plan.amountToBridgeLD + plan.feeAmountLD;
+
+        // The complete live fee conversion and cap check intentionally precede
+        // both the bridge-token and fee-token transferFrom calls.
+        if (totalAmountInLD > _maxAmountInLD) {
+            revert FeeInclusiveAmountExceedsMaximum(plan.amountToBridgeLD, plan.feeAmountLD, _maxAmountInLD);
+        }
+
+        if (plan.amountToBridgeLD > 0) {
+            ITIP20(plan.feeToken).transferFrom(msg.sender, address(this), plan.amountToBridgeLD);
+        }
+
+        if (_dstEid == $.localEid) {
+            _sendLocal({ _oft: _oft, _amount: plan.amountToBridgeLD, _hopMessage: hopMessage });
+        } else {
+            _collectNativeAltTokenFrom(plan.feeToken, plan.paymentToken, plan.feeAmountLD, plan.nativeFee);
+            StdPrecompiles.TIP_FEE_MANAGER.setUserToken(plan.paymentToken);
+            _approveOftFee(_oft, plan.paymentToken, plan.amountToBridgeLD, plan.messagingFee.nativeFee);
+            IOFT(_oft).send{ value: 0 }(plan.sendParam, plan.messagingFee, address(this));
+        }
+
+        emit SendOFT(_oft, msg.sender, _dstEid, _recipient, plan.amountToBridgeLD);
+        emit SendOFTFeeInclusive(
+            _oft,
+            msg.sender,
+            _dstEid,
+            _recipient,
+            plan.feeToken,
+            plan.paymentToken,
+            plan.amountToBridgeLD,
+            plan.feeAmountLD,
+            _maxAmountInLD
+        );
+    }
+
+    /// @inheritdoc IRemoteHopV201Tempo
+    function quoteFeeInclusive(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountToBridgeLD,
+        uint128 _dstGas,
+        bytes memory _data
+    )
+        external
+        view
+        override
+        returns (
+            uint256 amountToBridgeLD,
+            address feeToken,
+            address paymentToken,
+            uint256 feeAmountLD,
+            uint256 totalAmountInLD
+        )
+    {
+        HopMessage memory hopMessage = HopMessage({
+            srcEid: localEid(),
+            dstEid: _dstEid,
+            dstGas: _dstGas,
+            sender: bytes32(uint256(uint160(msg.sender))),
+            recipient: _recipient,
+            data: _data
+        });
+        FeeInclusivePlan memory plan = _quoteFeeInclusive(_oft, hopMessage, _amountToBridgeLD);
+
+        amountToBridgeLD = plan.amountToBridgeLD;
+        feeToken = plan.feeToken;
+        paymentToken = plan.paymentToken;
+        feeAmountLD = plan.feeAmountLD;
+        totalAmountInLD = amountToBridgeLD + feeAmountLD;
+    }
+
     /// @notice Override quote to return fees in native-LZ units.
     /// @dev This matches `IOFT.quoteSend()` semantics on Tempo OFTs.
     function quote(
@@ -159,6 +267,33 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
             : quoteHop(_dstEid, _dstGas, _data);
 
         return fee.nativeFee + hopFeeOnFraxtal;
+    }
+
+    /// @dev Builds the complete fee-inclusive plan without moving caller funds.
+    function _quoteFeeInclusive(
+        address _oft,
+        HopMessage memory _hopMessage,
+        uint256 _amountToBridgeLD
+    ) internal view returns (FeeInclusivePlan memory plan) {
+        plan.amountToBridgeLD = removeDust(_oft, _amountToBridgeLD);
+        if (plan.amountToBridgeLD == 0) revert FeeInclusiveZeroAmount();
+
+        plan.feeToken = IOFT(_oft).token();
+        plan.paymentToken = plan.feeToken;
+
+        if (_hopMessage.dstEid == localEid()) return plan;
+
+        plan.sendParam = _generateSendParam({ _amountLD: plan.amountToBridgeLD, _hopMessage: _hopMessage });
+        plan.messagingFee = IOFT(_oft).quoteSend(plan.sendParam, false);
+        plan.nativeFee = plan.messagingFee.nativeFee + _quoteRelayFee(_hopMessage);
+        (plan.paymentToken, plan.feeAmountLD) = _quoteNativeAltTokenFrom(plan.feeToken, plan.nativeFee);
+    }
+
+    function _quoteRelayFee(HopMessage memory _hopMessage) internal view returns (uint256) {
+        return
+            (_hopMessage.dstEid == FRAXTAL_EID || localEid() == FRAXTAL_EID)
+                ? 0
+                : quoteHop(_hopMessage.dstEid, _hopMessage.dstGas, _hopMessage.data);
     }
 
     /// @dev Override to let the OFT pay its endpoint fee in TIP20 via EndpointV2Alt.

@@ -134,4 +134,44 @@ abstract contract TempoGasTokenBase {
 
         return targetToken;
     }
+
+    /// @dev Quotes an explicit TIP20 payment token without consulting the caller's
+    ///      Fee Manager preference. Returns the whitelisted token ultimately paid
+    ///      to EndpointV2Alt and the amount pulled from `_userToken`.
+    function _quoteNativeAltTokenFrom(
+        address _userToken,
+        uint256 _nativeFee
+    ) internal view returns (address paymentToken, uint256 userTokenAmount) {
+        if (_nativeFee == 0) return (_userToken, 0);
+        if (address(nativeToken) == address(0)) revert NativeTokenUnavailable();
+
+        if (nativeToken.isWhitelistedToken(_userToken)) {
+            return (_userToken, _nativeFee);
+        }
+
+        (paymentToken, userTokenAmount) = _findSwapTarget(_userToken, SafeCast.toUint128(_nativeFee));
+    }
+
+    /// @dev Collects a previously quoted explicit TIP20 payment. This deliberately
+    ///      does not resolve `userTokens(msg.sender)`: callers bind `_userToken`,
+    ///      `_paymentToken`, and `_userTokenAmount` before any transferFrom.
+    function _collectNativeAltTokenFrom(
+        address _userToken,
+        address _paymentToken,
+        uint256 _userTokenAmount,
+        uint256 _nativeFee
+    ) internal {
+        if (_nativeFee == 0) return;
+
+        ITIP20(_userToken).transferFrom(msg.sender, address(this), _userTokenAmount);
+        if (_paymentToken == _userToken) return;
+
+        ITIP20(_userToken).approve(address(StdPrecompiles.STABLECOIN_DEX), _userTokenAmount);
+        StdPrecompiles.STABLECOIN_DEX.swapExactAmountOut({
+            tokenIn: _userToken,
+            tokenOut: _paymentToken,
+            amountOut: SafeCast.toUint128(_nativeFee),
+            maxAmountIn: SafeCast.toUint128(_userTokenAmount)
+        });
+    }
 }
