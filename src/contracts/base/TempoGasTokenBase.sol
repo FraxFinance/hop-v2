@@ -44,11 +44,23 @@ abstract contract TempoGasTokenBase {
 
     /// @dev Finds the best whitelisted token that can be swapped to from `_userToken`.
     ///      Returns the whitelisted token address and the quoted input amount.
-    ///      Reverts if no viable swap path exists.
+    ///      Reverts with `NoSwappableWhitelistedToken` if no viable swap path exists.
     function _findSwapTarget(
         address _userToken,
         uint128 _amountOut
     ) internal view returns (address whitelistedToken, uint128 amountIn) {
+        bool _found;
+        (_found, whitelistedToken, amountIn) = _tryFindSwapTarget(_userToken, _amountOut);
+        if (!_found) revert NoSwappableWhitelistedToken(_userToken);
+    }
+
+    /// @dev Non-reverting variant of `_findSwapTarget`. Returns `found = false` (instead of
+    ///      reverting) when no whitelisted token is reachable from `_userToken`, letting callers
+    ///      surface a context-specific error before moving any funds.
+    function _tryFindSwapTarget(
+        address _userToken,
+        uint128 _amountOut
+    ) internal view returns (bool found, address whitelistedToken, uint128 amountIn) {
         address[] memory _tokens = nativeToken.getWhitelistedTokens();
         uint128 _bestAmountIn = type(uint128).max;
         address _bestToken;
@@ -76,8 +88,8 @@ abstract contract TempoGasTokenBase {
             }
         }
 
-        if (_bestToken == address(0)) revert NoSwappableWhitelistedToken(_userToken);
-        return (_bestToken, _bestAmountIn);
+        if (_bestToken == address(0)) return (false, address(0), 0);
+        return (true, _bestToken, _bestAmountIn);
     }
 
     // ─── Quote Helpers ───────────────────────────────────────────────────
@@ -150,6 +162,25 @@ abstract contract TempoGasTokenBase {
         }
 
         (paymentToken, userTokenAmount) = _findSwapTarget(_userToken, SafeCast.toUint128(_nativeFee));
+    }
+
+    /// @dev Non-reverting variant of `_quoteNativeAltTokenFrom`. Returns `supported = false`
+    ///      (instead of reverting) when `_userToken` can neither pay the endpoint directly nor be
+    ///      swapped to a whitelisted token, letting callers raise a context-specific error.
+    function _tryQuoteNativeAltTokenFrom(
+        address _userToken,
+        uint256 _nativeFee
+    ) internal view returns (bool supported, address paymentToken, uint256 userTokenAmount) {
+        if (_nativeFee == 0) return (true, _userToken, 0);
+        if (address(nativeToken) == address(0)) revert NativeTokenUnavailable();
+
+        if (nativeToken.isWhitelistedToken(_userToken)) {
+            return (true, _userToken, _nativeFee);
+        }
+
+        uint128 _amountIn;
+        (supported, paymentToken, _amountIn) = _tryFindSwapTarget(_userToken, SafeCast.toUint128(_nativeFee));
+        userTokenAmount = _amountIn;
     }
 
     /// @dev Collects a previously quoted explicit TIP20 payment. This deliberately

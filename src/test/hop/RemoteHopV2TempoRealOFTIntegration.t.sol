@@ -524,7 +524,9 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         uint256 balanceBefore = tempoFraxOft.balanceOf(alice);
 
         vm.startPrank(alice);
-        vm.expectRevert(abi.encodeWithSignature("NoSwappableWhitelistedToken(address)", address(tempoFraxOft)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IRemoteHopV201Tempo.FeeInclusiveUnsupportedFeeToken.selector, address(tempoFraxOft))
+        );
         remoteHopTempo.sendOFTFeeInclusive(
             address(tempoFraxOft),
             FRAXTAL_EID,

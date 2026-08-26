@@ -286,7 +286,17 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer, I
         plan.sendParam = _generateSendParam({ _amountLD: plan.amountToBridgeLD, _hopMessage: _hopMessage });
         plan.messagingFee = IOFT(_oft).quoteSend(plan.sendParam, false);
         plan.nativeFee = plan.messagingFee.nativeFee + _quoteRelayFee(_hopMessage);
-        (plan.paymentToken, plan.feeAmountLD) = _quoteNativeAltTokenFrom(plan.feeToken, plan.nativeFee);
+
+        // Fee-inclusive settles the LZ fee out of the bridged OFT's own token. That is only possible
+        // when the token is itself a whitelisted EndpointV2Alt stablecoin (e.g. frxUSD) or is swappable
+        // to one on the stablecoin DEX. Non-stablecoin OFTs (frxETH, sfrxETH, WFRAX, FPI, ...) have no
+        // such route, so fail fast with a dedicated error before pulling any funds.
+        bool feeTokenSupported;
+        (feeTokenSupported, plan.paymentToken, plan.feeAmountLD) = _tryQuoteNativeAltTokenFrom(
+            plan.feeToken,
+            plan.nativeFee
+        );
+        if (!feeTokenSupported) revert FeeInclusiveUnsupportedFeeToken(plan.feeToken);
     }
 
     function _quoteRelayFee(HopMessage memory _hopMessage) internal view returns (uint256) {
