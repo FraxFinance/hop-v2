@@ -13,6 +13,20 @@ struct RemoteAdminRoute {
 }
 
 contract HopConstants {
+    /// @dev Compose gas forwarded to the destination for a RemoteAdmin hop. The compose path
+    ///      (endpoint -> RemoteHopV2.lzCompose -> RemoteAdmin.hopCompose -> HopV2 admin call)
+    ///      costs ~60k of execution on EVM-equivalent chains, so this leaves wide margin there.
+    uint128 internal constant DEFAULT_COMPOSE_GAS = 400_000;
+
+    /// @dev Chains whose gas metering makes DEFAULT_COMPOSE_GAS insufficient or too tight.
+    ///      Simulated against live deployments (eth_call as the LZ endpoint, binary searched
+    ///      for the minimum gas the compose survives, including tx intrinsic cost):
+    ///        EVM-equivalent chains   ~88k   (Polygon ~112k, Sei ~142k, Monad ~151k)
+    ///        Tempo                  ~327k   - only 18% margin under 400k
+    ///        ZkSync / Abstract      ~390k   - EraVM metering, effectively no margin under 400k
+    ///        Somnia               ~1_470k   - 400k would run out of gas
+    mapping(uint256 chainId => uint128 composeGas) internal composeGasOverrides;
+
     mapping(uint256 chainId => HopV2Target target) internal hopV2Targets;
     mapping(uint32 eid => address remoteAdmin) internal remoteAdmins;
     mapping(uint256 chainId => uint32 eid) internal eidsByChainId;
@@ -79,6 +93,17 @@ contract HopConstants {
         _addRemoteAdminRoute(324, 30_165, 0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb); // ZkSync
         _addRemoteAdminRoute(4217, 30_410, 0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f); // Tempo
         _addRemoteAdminRoute(5031, 30_380, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Somnia
+
+        composeGasOverrides[324] = 1_500_000; // ZkSync
+        composeGasOverrides[2741] = 1_500_000; // Abstract
+        composeGasOverrides[4217] = 2_500_000; // Tempo
+        composeGasOverrides[5031] = 3_000_000; // Somnia
+    }
+
+    /// @notice Compose gas to forward to `chainId` for a RemoteAdmin hop
+    function _composeGasFor(uint256 chainId) internal view returns (uint128 composeGas) {
+        composeGas = composeGasOverrides[chainId];
+        if (composeGas == 0) composeGas = DEFAULT_COMPOSE_GAS;
     }
 
     function _hopV2TargetFor(uint256 chainId) internal view returns (HopV2Target storage target) {
