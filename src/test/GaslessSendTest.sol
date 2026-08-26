@@ -1,0 +1,432 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.19;
+
+import "frax-std/FraxTest.sol";
+import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
+import { OptionsBuilder } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oapp/libs/OptionsBuilder.sol";
+import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
+import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { HopV2 } from "src/contracts/hop/HopV2.sol";
+import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+import { GaslessSend, Tx } from "src/contracts/GaslessSend.sol";
+
+import { deployRemoteHopV2 } from "src/script/hop/DeployRemoteHopV2.s.sol";
+import { deployFraxtalHopV2 } from "src/script/hop/DeployFraxtalHopV2.s.sol";
+
+import { SigUtils } from "src/test/utils/SigUtils.sol";
+
+interface IERC712 {
+    function DOMAIN_SEPARATOR() external view returns (bytes32);
+}
+
+contract GaslessSendTest is FraxTest {
+    uint256 authorizerPrivateKey = 0x41;
+    address authorizer = vm.addr(authorizerPrivateKey);
+    bytes32 authorizerAsBytes32 = bytes32(uint256(uint160(authorizer)));
+    address sender = vm.addr(0xb0b);
+    uint256 amount = 100e18;
+    uint256 validAfter;
+    uint256 validBefore;
+    bytes32 nonce;
+    bytes32 salt = keccak256("some salt");
+    uint32 srcEid;
+    uint32 dstEid;
+    bytes data = "mock data string";
+
+    // Chain EIDs
+    uint32 constant FRAXTAL_EID = 30_255;
+    uint32 constant ARBITRUM_EID = 30_110;
+
+    address hop;
+    address oft;
+    address frxUsd;
+    SigUtils sigUtils;
+    GaslessSend gaslessSendContract;
+
+    address[] approvedOfts;
+
+    /// @notice Helper function to generate unique salts for tests
+    function generateSalt(uint256 index) internal pure returns (bytes32) {
+        return keccak256(abi.encode("salt", index));
+    }
+
+    function setUpFraxtal() public virtual {
+        // TODO: update block number post frxUSD 3009 upgrade
+        vm.createSelectFork(vm.envString("FRAXTAL_MAINNET_URL"), 23_464_636);
+
+        validAfter = block.timestamp - 1;
+        validBefore = block.timestamp + 1 days;
+        srcEid = FRAXTAL_EID;
+        dstEid = ARBITRUM_EID;
+
+        oft = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
+        approvedOfts.push(oft); // frxUSD Lockbox
+        frxUsd = 0xFc00000000000000000000000000000000000001;
+        sigUtils = new SigUtils(IERC712(frxUsd).DOMAIN_SEPARATOR());
+        hop = deployFraxtalHopV2(
+            address(1), // proxyAdmin
+            30_255, // localEid
+            0x1a44076050125825900e736c501f859c50fE728c, // endpoint
+            3, // num DVNs
+            0x41Bdb4aa4A63a5b2Efc531858d3118392B1A1C3d, // executor
+            0xcCE466a522984415bC91338c232d98869193D46e, // dvn
+            0xc1B621b18187F74c8F6D52a6F709Dd2780C09821, // treasury
+            approvedOfts
+        );
+        gaslessSendContract = new GaslessSend(oft, 0xbf228a9131AB3BB8ca8C7a4Ad574932253D99Cd1, hop);
+
+        // set mock remote hop
+        HopV2(hop).setRemoteHop(dstEid, address(1));
+        // fund sender
+        deal(sender, 100 ether);
+        // fund authorizer with frxUSD
+        deal(frxUsd, authorizer, amount);
+    }
+
+    function setUpArbitrum() public virtual {
+        vm.createSelectFork(vm.envString("ARBITRUM_MAINNET_URL"), 400_000_000);
+
+        validAfter = block.timestamp - 1;
+        validBefore = block.timestamp + 1 days;
+        srcEid = ARBITRUM_EID;
+        dstEid = FRAXTAL_EID;
+
+        oft = 0x80Eede496655FB9047dd39d9f418d5483ED600df;
+        approvedOfts.push(oft); // frxUSD OFT
+        frxUsd = 0x80Eede496655FB9047dd39d9f418d5483ED600df;
+        sigUtils = new SigUtils(IERC712(frxUsd).DOMAIN_SEPARATOR());
+        hop = deployRemoteHopV2(
+            address(1), // proxyAdmin
+            30_110, // localEid
+            0x1a44076050125825900e736c501f859c50fE728c, // endpoint
+            bytes32(uint256(uint160(address(1)))), // mock fraxtalHop
+            3, // num DVNs
+            0x31CAe3B7fB82d847621859fb1585353c5720660D, // executor
+            0x2f55C492897526677C5B68fb199ea31E2c126416, // dvn
+            0x532410B245eB41f24Ed1179BA0f6ffD94738AE70, // treasury
+            approvedOfts
+        );
+        gaslessSendContract = new GaslessSend(oft, 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612, hop);
+
+        // fund sender
+        deal(sender, 100 ether);
+        // fund authorizer with frxUSD
+        deal(frxUsd, authorizer, amount);
+    }
+
+    function test_gaslessSendWithData_Fraxtal() public {
+        setUpFraxtal();
+        // gaslessSend(data);
+    }
+
+    function test_gaslessSendWithoutData_Fraxtal() public {
+        setUpFraxtal();
+        // gaslessSend("");
+    }
+
+    function test_gaslessSendWithData_Arbitrum() public {
+        setUpArbitrum();
+        gaslessSend(data);
+    }
+
+    function test_gaslessSendWithoutData_Arbitrum() public {
+        setUpArbitrum();
+        gaslessSend("");
+    }
+
+    // ============ Revert Tests - Arbitrum ============
+
+    function test_gaslessSend_Arbitrum_RevertWhen_InsufficientAmountAfterFees() public {
+        setUpArbitrum();
+
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+        uint256 feeInUsd = gaslessSendContract.quoteInFrxUsd(
+            oft,
+            dstEid,
+            bytes32(uint256(uint160(sender))),
+            amount,
+            0,
+            ""
+        );
+
+        // Calculate the expected amount after fees, then set minAmountLD above it
+        uint256 expectedAmountAfterFees = amount - feeInUsd;
+
+        // Build bridge tx with minAmountLD higher than amount - fees (guaranteed to fail)
+        Tx memory tx_ = Tx({
+            oft: oft,
+            from: authorizer,
+            recipient: authorizerAsBytes32,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: expectedAmountAfterFees + 1 // Guaranteed to exceed actual amount after fees
+        });
+
+        // Generate signature
+        nonce = keccak256(abi.encode(tx_));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: address(gaslessSendContract),
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+
+        vm.prank(sender);
+        vm.expectRevert(abi.encodeWithSignature("InsufficientAmountAfterFees()"));
+        gaslessSendContract.gaslessSend{ value: fee }(tx_, v, r, s);
+    }
+
+    // ============ Edge Case Tests - Arbitrum ============
+
+    function test_gaslessSend_Arbitrum_WithDifferentAmounts() public {
+        setUpArbitrum();
+
+        uint256[] memory testAmounts = new uint256[](3);
+        testAmounts[0] = 1e18; // 1 frxUSD
+        testAmounts[1] = 1000e18; // 1000 frxUSD
+        testAmounts[2] = 10_000e18; // 10,000 frxUSD
+
+        for (uint256 i = 0; i < testAmounts.length; i++) {
+            uint256 testAmount = testAmounts[i];
+
+            // Fund authorizer with test amount
+            deal(frxUsd, authorizer, testAmount);
+
+            // Build the bridge tx
+            Tx memory tx_ = Tx({
+                oft: oft,
+                from: authorizer,
+                recipient: authorizerAsBytes32,
+                value: testAmount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                salt: generateSalt(i),
+                srcEid: srcEid,
+                dstEid: dstEid,
+                dstGas: 0,
+                data: "",
+                minAmountLD: 0
+            });
+
+            // Generate signature
+            nonce = keccak256(abi.encode(tx_));
+            SigUtils.Authorization memory authorization = SigUtils.Authorization({
+                from: authorizer,
+                to: address(gaslessSendContract),
+                value: testAmount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                nonce: nonce
+            });
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+                authorizerPrivateKey,
+                sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+            );
+
+            uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), testAmount, 0, "");
+
+            uint256 senderBalanceBefore = IERC20(frxUsd).balanceOf(sender);
+
+            vm.prank(sender);
+            gaslessSendContract.gaslessSend{ value: fee }(tx_, v, r, s);
+
+            // Verify authorizer balance is 0
+            assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+            // Verify sender received fee
+            assertGt(IERC20(frxUsd).balanceOf(sender), senderBalanceBefore);
+        }
+    }
+
+    function test_gaslessSend_Arbitrum_WithDifferentSalts() public {
+        setUpArbitrum();
+
+        // Test that different salts allow multiple transactions from same authorizer
+        for (uint256 i = 0; i < 3; i++) {
+            // Fund authorizer for each iteration
+            deal(frxUsd, authorizer, amount);
+
+            // Build the bridge tx with different salt
+            Tx memory tx_ = Tx({
+                oft: oft,
+                from: authorizer,
+                recipient: authorizerAsBytes32,
+                value: amount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                salt: generateSalt(i),
+                srcEid: srcEid,
+                dstEid: dstEid,
+                dstGas: 0,
+                data: "",
+                minAmountLD: 0
+            });
+
+            // Generate signature
+            nonce = keccak256(abi.encode(tx_));
+            SigUtils.Authorization memory authorization = SigUtils.Authorization({
+                from: authorizer,
+                to: address(gaslessSendContract),
+                value: amount,
+                validAfter: validAfter,
+                validBefore: validBefore,
+                nonce: nonce
+            });
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+                authorizerPrivateKey,
+                sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+            );
+
+            uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+
+            vm.prank(sender);
+            gaslessSendContract.gaslessSend{ value: fee }(tx_, v, r, s);
+
+            // Verify balances
+            assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+        }
+    }
+
+    function test_gaslessSend_Arbitrum_WithMinAmountLD() public {
+        setUpArbitrum();
+
+        uint256 feeInUsd = gaslessSendContract.quoteInFrxUsd(
+            oft,
+            dstEid,
+            bytes32(uint256(uint160(sender))),
+            amount,
+            0,
+            ""
+        );
+        uint256 expectedAmountAfterFees = amount - feeInUsd;
+
+        // Calculate a safe minAmountLD value (90% of expected amount after fees)
+        // This tests that the transaction succeeds when minAmountLD is below the actual amount after fees
+        uint256 safeMinAmount = (expectedAmountAfterFees * 90) / 100;
+
+        // Build bridge tx with minAmountLD just below expected amount
+        Tx memory tx_ = Tx({
+            oft: oft,
+            from: authorizer,
+            recipient: authorizerAsBytes32,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: "",
+            minAmountLD: safeMinAmount
+        });
+
+        // Generate signature
+        nonce = keccak256(abi.encode(tx_));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: address(gaslessSendContract),
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, "");
+
+        vm.prank(sender);
+        gaslessSendContract.gaslessSend{ value: fee }(tx_, v, r, s);
+
+        // Verify balances
+        assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+        assertGt(IERC20(frxUsd).balanceOf(sender), 0);
+    }
+
+    function test_gaslessSend_Arbitrum_WithLargeData() public {
+        setUpArbitrum();
+
+        // Create a large data payload efficiently using repeated pattern
+        bytes memory pattern = "test data pattern for cross-chain message";
+        bytes memory largeData = new bytes(1000);
+        for (uint256 i = 0; i < 1000; i++) {
+            largeData[i] = pattern[i % pattern.length];
+        }
+
+        gaslessSend(largeData);
+    }
+
+    function test_gaslessSend_Arbitrum_FeeDistribution() public {
+        setUpArbitrum();
+
+        uint256 senderBalanceBefore = IERC20(frxUsd).balanceOf(sender);
+
+        gaslessSend("");
+
+        uint256 senderBalanceAfter = IERC20(frxUsd).balanceOf(sender);
+        uint256 feeReceived = senderBalanceAfter - senderBalanceBefore;
+
+        // Verify sender received non-zero fee
+        assertGt(feeReceived, 0, "Sender should receive fee");
+
+        // Verify authorizer has no remaining balance
+        assertEq(IERC20(frxUsd).balanceOf(authorizer), 0, "Authorizer should have no remaining balance");
+    }
+
+    function gaslessSend(bytes memory _data) public {
+        // build the bridge tx
+        Tx memory tx_ = Tx({
+            oft: oft,
+            from: authorizer,
+            recipient: authorizerAsBytes32,
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            salt: salt,
+            srcEid: srcEid,
+            dstEid: dstEid,
+            dstGas: 0,
+            data: _data,
+            minAmountLD: 0
+        });
+
+        // generate signature
+        nonce = keccak256(abi.encode(tx_));
+        SigUtils.Authorization memory authorization = SigUtils.Authorization({
+            from: authorizer,
+            to: address(gaslessSendContract),
+            value: amount,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        });
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            authorizerPrivateKey,
+            sigUtils.getReceiveWithAuthorizationTypedDataHash(authorization)
+        );
+
+        uint256 fee = HopV2(hop).quote(oft, dstEid, bytes32(uint256(uint160(sender))), amount, 0, _data);
+
+        vm.prank(sender);
+        gaslessSendContract.gaslessSend{ value: fee }(tx_, v, r, s);
+
+        // verify balances
+        assertEq(IERC20(frxUsd).balanceOf(authorizer), 0);
+        assertGt(IERC20(frxUsd).balanceOf(sender), 0);
+    }
+}

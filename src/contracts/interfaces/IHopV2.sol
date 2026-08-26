@@ -36,6 +36,8 @@ interface IHopV2 {
 
     function quoteHop(uint32 _dstEid, uint128 _dstGas, bytes memory _data) external view returns (uint256 fee);
 
+    function removeDust(address _oft, uint256 _amountLD) external view returns (uint256);
+
     // Admin
 
     function pauseOn() external;

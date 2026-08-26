@@ -12,6 +12,7 @@ contract DeployRemoteHopV2Base is DeployRemoteHopV2 {
 
         proxyAdmin = 0xF59C41A57AB4565AF7424F64981523DfD7A453c5;
         endpoint = 0x1a44076050125825900e736c501f859c50fE728c;
+        gasPriceOracle = 0x6506D235cBac14222f91B975594AAa0c723FE486;
         localEid = 30_184;
 
         msig = 0xCBfd4Ef00a8cf91Fd1e1Fe97dC05910772c15E53;

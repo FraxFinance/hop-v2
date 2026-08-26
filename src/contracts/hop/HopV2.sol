@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 import { AccessControlEnumerableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlEnumerableUpgradeable.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
 
@@ -420,7 +421,7 @@ contract HopV2 is AccessControlEnumerableUpgradeable, IHopV2 {
         return $.paused;
     }
 
-    function approvedOft(address oft) external view returns (bool isApproved) {
+    function approvedOft(address oft) public view returns (bool isApproved) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.approvedOft[oft];
     }
