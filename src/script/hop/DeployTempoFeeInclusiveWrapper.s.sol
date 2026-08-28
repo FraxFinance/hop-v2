@@ -11,8 +11,11 @@ import { TempoFeeInclusiveWrapper } from "src/contracts/hop/TempoFeeInclusiveWra
 ///   forge script src/script/hop/DeployTempoFeeInclusiveWrapper.s.sol \
 ///     --rpc-url https://rpc.tempo.xyz --broadcast
 ///
-/// After deploying, set the resulting address as
-/// `TEMPO_FEE_INCLUSIVE_WRAPPER` in the frax-lz-route-api quote service.
+/// Tempo outbound routes stay disabled in frax-lz-route-api until the deployed
+/// address is wired in: set `TEMPO_FEE_INCLUSIVE_WRAPPER` in that repo's
+/// `wrangler.jsonc` vars block and redeploy the Worker. While it is unset the
+/// quote service fails closed (503) on Tempo rather than serving a quote
+/// pointing at address(0).
 contract DeployTempoFeeInclusiveWrapper is Script {
     /// @dev Deployed RemoteHopV201Tempo proxy (Tempo mainnet).
     address public constant REMOTE_HOP_TEMPO = 0x0000006D38568b00B457580b734e0076C62de659;
