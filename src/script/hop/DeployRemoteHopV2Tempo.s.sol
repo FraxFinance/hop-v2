@@ -32,6 +32,7 @@ contract DeployRemoteHopV2Tempo is DeployRemoteHopV2 {
 
     function run() public override {
         _validateAddrs();
+        bytes memory feeMultipliersCalldata = _loadFeeMultipliersCalldata();
 
         vm.startBroadcast();
 
@@ -40,20 +41,21 @@ contract DeployRemoteHopV2Tempo is DeployRemoteHopV2 {
         approvedOfts.push(frxEthOft);
         approvedOfts.push(sfrxEthOft);
         approvedOfts.push(wFraxOft);
-        approvedOfts.push(fpiOft);
 
         address remoteHop = _deployRemoteHopV2({
             _proxyAdmin: proxyAdmin,
             _localEid: localEid,
             _endpoint: endpoint,
             _fraxtalHop: bytes32(uint256(uint160(FRAXTAL_HOP))),
-            _numDVNs: 3,
+            _numDVNs: _numDVNs(),
             _EXECUTOR: EXECUTOR,
             _DVN: DVN,
             _TREASURY: ISendLibrary(SEND_LIBRARY).treasury(),
             _approvedOfts: approvedOfts
         });
         console.log("RemoteHopV2 deployed at:", remoteHop);
+
+        _configureRemoteHop(remoteHop, feeMultipliersCalldata);
 
         address remoteAdmin = _deployRemoteAdmin(remoteHop);
         console.log("RemoteAdmin deployed at:", remoteAdmin);
@@ -120,12 +122,6 @@ contract DeployRemoteHopV2Tempo is DeployRemoteHopV2 {
 
         ITransparentUpgradeableProxy(proxy).upgradeToAndCall(implementationTempo, initializeArgs);
         ITransparentUpgradeableProxy(proxy).changeAdmin(_proxyAdmin);
-
-        // set solana enforced options
-        RemoteHopV2(payable(address(proxy))).setExecutorOptions(
-            30_168,
-            hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0"
-        );
 
         return payable(address(proxy));
     }

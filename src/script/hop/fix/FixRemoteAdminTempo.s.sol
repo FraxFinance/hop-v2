@@ -45,7 +45,6 @@ contract FixRemoteAdminTempo is DeployRemoteHopV2 {
         approvedOfts.push(frxEthOft);
         approvedOfts.push(sfrxEthOft);
         approvedOfts.push(wFraxOft);
-        approvedOfts.push(fpiOft);
 
         address newRemoteAdmin = _deployRemoteAdmin(REMOTE_HOP);
         console.log("RemoteAdmin deployed at:", newRemoteAdmin);

@@ -5,6 +5,8 @@ import { console } from "forge-std/Script.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
 import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
+import { IHopV201 } from "src/contracts/interfaces/IHopV201.sol";
+import { HopConstants, HopV2Target } from "src/script/hop/HopConstants.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -30,7 +32,7 @@ interface IOFT {
     function token() external view returns (address);
 }
 
-abstract contract DeployRemoteHopV2 is Script {
+abstract contract DeployRemoteHopV2 is Script, HopConstants {
     address constant FRAXTAL_HOP = 0x00000000e18aFc20Afe54d4B2C8688bB60c06B36;
     address constant FRAXTAL_MSIG = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
 
@@ -53,6 +55,7 @@ abstract contract DeployRemoteHopV2 is Script {
 
     function run() public virtual {
         _validateAddrs();
+        bytes memory feeMultipliersCalldata = _loadFeeMultipliersCalldata();
 
         vm.startBroadcast();
 
@@ -61,20 +64,21 @@ abstract contract DeployRemoteHopV2 is Script {
         approvedOfts.push(frxEthOft);
         approvedOfts.push(sfrxEthOft);
         approvedOfts.push(wFraxOft);
-        approvedOfts.push(fpiOft);
 
         address remoteHop = deployRemoteHopV2({
             _proxyAdmin: proxyAdmin,
             _localEid: localEid,
             _endpoint: endpoint,
             _fraxtalHop: bytes32(uint256(uint160(FRAXTAL_HOP))),
-            _numDVNs: 3,
+            _numDVNs: _numDVNs(),
             _EXECUTOR: EXECUTOR,
             _DVN: DVN,
             _TREASURY: ISendLibrary(SEND_LIBRARY).treasury(),
             _approvedOfts: approvedOfts
         });
         console.log("RemoteHopV2 deployed at:", remoteHop);
+
+        _configureRemoteHop(remoteHop, feeMultipliersCalldata);
 
         address remoteAdmin = _deployRemoteAdmin(remoteHop);
         console.log("RemoteAdmin deployed at:", remoteAdmin);
@@ -124,6 +128,7 @@ abstract contract DeployRemoteHopV2 is Script {
 
         require(msig != address(0), "msig is not set");
         require(proxyAdmin != address(0), "proxyAdmin is not set");
+        require(_numDVNs() != 0, "numDVNs is not set");
 
         require(isStringEqual(IERC20Metadata(IOFT(frxUsdOft).token()).symbol(), "frxUSD"), "frxUsdOft != frxUSD");
         require(isStringEqual(IERC20Metadata(IOFT(sfrxUsdOft).token()).symbol(), "sfrxUSD"), "sfrxUsdOft != sfrxUSD");
@@ -135,6 +140,44 @@ abstract contract DeployRemoteHopV2 is Script {
 
     function isStringEqual(string memory _a, string memory _b) public pure returns (bool) {
         return keccak256(abi.encodePacked(_a)) == keccak256(abi.encodePacked(_b));
+    }
+
+    function _numDVNs() internal pure virtual returns (uint32) {
+        return 3;
+    }
+
+    function _loadFeeMultipliersCalldata() internal view returns (bytes memory data) {
+        HopV2Target storage target = _hopV2TargetFor(block.chainid);
+        string memory filename = string.concat("out/feeMultipliers/", _feeMultiplierConfigName(target.name), ".json");
+        string memory json = vm.readFile(filename);
+
+        require(vm.parseJsonUint(json, ".chainId") == block.chainid, "fee multiplier chainId mismatch");
+        require(vm.parseJsonUint(json, ".eid") == localEid, "fee multiplier eid mismatch");
+
+        data = vm.parseJsonBytes(json, ".setFeeMultipliersBatchCalldata");
+        require(data.length >= 4, "fee multiplier calldata missing");
+
+        bytes4 selector;
+        assembly {
+            selector := mload(add(data, 0x20))
+        }
+        require(selector == IHopV201.setFeeMultipliersBatch.selector, "invalid fee multiplier calldata");
+    }
+
+    function _configureRemoteHop(address remoteHop, bytes memory feeMultipliersCalldata) internal {
+        RemoteHopV2 hop = RemoteHopV2(payable(remoteHop));
+
+        hop.setExecutorOptions(30_168, hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0");
+        hop.setExecutorOptions(30_410, abi.encodePacked(uint8(1), uint16(17), uint8(1), uint128(2_500_000)));
+        hop.setExecutorOptions(30_380, abi.encodePacked(uint8(1), uint16(17), uint8(1), uint128(1_000_000)));
+
+        (bool success, ) = remoteHop.call(feeMultipliersCalldata);
+        require(success, "Unable to set fee multipliers");
+
+        // FPI is deliberately omitted from the initializer so it is never transiently approved.
+        hop.setApprovedOft(fpiOft, false);
+        require(hop.numDVNs() == _numDVNs(), "numDVNs mismatch");
+        require(!hop.approvedOft(fpiOft), "FPI OFT is still approved");
     }
 
     function _deployRemoteAdmin(address remoteHop) internal virtual returns (address) {
@@ -193,16 +236,6 @@ function deployRemoteHopV2(
 
     ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(hopV201, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
-
-    // set solana enforced options
-    RemoteHopV2(payable(address(proxy))).setExecutorOptions(
-        30_168,
-        hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0"
-    );
-    // set tempo enforced options
-    RemoteHopV2(payable(address(proxy))).setExecutorOptions(30_410, hex"01002101000000000000000000000000002625A0");
-    // set somnia enforced options
-    RemoteHopV2(payable(address(proxy))).setExecutorOptions(30_380, hex"010021010000000000000000000000000016E360");
 
     return payable(address(proxy));
 }

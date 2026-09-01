@@ -70,6 +70,8 @@ interface ChainConfig {
   /** LZ default Executor (from https://metadata.layerzero-api.com/v1/metadata) */
   executor: string;
   rpcs: string[];
+  /** Executor options stored by DeployRemoteHopV2 for this destination, when non-default */
+  executorOptions?: string;
   /** dst-only chains (no EVM RemoteHop / no readable executor) are quoted as destinations only */
   dstOnly?: boolean;
   /** decimals of the native fee unit Executor.getFee() returns in (default 18; Tempo's native is 6) */
@@ -78,7 +80,7 @@ interface ChainConfig {
   warn?: string;
 }
 
-/// Live frxUSD chains (matches HopConstants.sol at commit dfc650a + Solana as destination-only)
+/// Live frxUSD chains (matches HopConstants.sol + Solana as destination-only)
 const CHAINS: ChainConfig[] = [
   {
     name: "Fraxtal",
@@ -207,6 +209,13 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://polygon-rpc.com", "https://polygon-bor-rpc.publicnode.com"],
   },
   {
+    name: "Robinhood",
+    chainId: 4663,
+    eid: 30_416,
+    executor: "0x4208d6e27538189bb48e603d6123a94b8abe0a0b",
+    rpcs: ["https://rpc.mainnet.chain.robinhood.com"],
+  },
+  {
     name: "Scroll",
     chainId: 534_352,
     eid: 30_214,
@@ -226,6 +235,7 @@ const CHAINS: ChainConfig[] = [
     eid: 30_380,
     executor: "0x4208d6e27538189bb48e603d6123a94b8abe0a0b",
     rpcs: ["https://api.infra.mainnet.somnia.network"],
+    executorOptions: defaultOptions(1_000_000n),
   },
   {
     name: "Sonic",
@@ -247,6 +257,7 @@ const CHAINS: ChainConfig[] = [
     eid: 30_410,
     executor: "0xf851abca1d0fd1df8eaba6de466a102996b7d7b2",
     rpcs: ["https://rpc.tempo.xyz", "https://tempo.drpc.org"],
+    executorOptions: defaultOptions(2_500_000n),
     nativeDecimals: 6,
     warn: "Tempo native has 6 decimals (RemoteHopV201Tempo exists for a reason) - verify the computed multiplier against a live quote before submitting",
   },
@@ -288,7 +299,15 @@ const CHAINS: ChainConfig[] = [
     executor: "0x664e390e672a811c12091db8426cbb7d68d5d8a6",
     rpcs: ["https://mainnet.era.zksync.io", "https://1rpc.io/zksync2-era"],
   },
-  { name: "Solana", chainId: 0, eid: 30_168, executor: "", rpcs: [], dstOnly: true },
+  {
+    name: "Solana",
+    chainId: 0,
+    eid: 30_168,
+    executor: "",
+    rpcs: [],
+    dstOnly: true,
+    executorOptions: "0x0100210100000000000000000000000000030d40000000000000000000000000002dc6c0",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -446,7 +465,7 @@ async function main() {
     { to: fraxtal.executor, data: SEL_PRICE_FEED },
     ...allDsts.map((d) => ({
       to: fraxtal.executor,
-      data: encodeGetFee(d.eid, FRAXTAL_HOP_SENDER, CALLDATA_SIZE, options),
+      data: encodeGetFee(d.eid, FRAXTAL_HOP_SENDER, CALLDATA_SIZE, d.executorOptions ?? options),
     })),
   ];
   const fraxRes = await rpcBatch(fraxtal, fraxCalls);
@@ -481,7 +500,7 @@ async function main() {
         { to: src.executor, data: SEL_PRICE_FEED },
         ...dsts.map((d) => ({
           to: src.executor,
-          data: encodeGetFee(d.eid, REMOTE_HOP_SENDER, CALLDATA_SIZE, options),
+          data: encodeGetFee(d.eid, REMOTE_HOP_SENDER, CALLDATA_SIZE, d.executorOptions ?? options),
         })),
       ];
       const res = await rpcBatch(src, calls);

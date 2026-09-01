@@ -52,6 +52,7 @@ contract HopConstants {
         _addHopV2Target(1329, "Sei", defaultHop);
         _addHopV2Target(2741, "Abstract", defaultHop);
         _addHopV2Target(4217, "Tempo", defaultHop);
+        _addHopV2Target(4663, "Robinhood", defaultHop);
         _addHopV2Target(5031, "Somnia", defaultHop);
         _addHopV2Target(8453, "Base", defaultHop);
         _addHopV2Target(98_866, "Plume", defaultHop);
@@ -92,6 +93,7 @@ contract HopConstants {
         _addRemoteAdminRoute(1, 30_101, 0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa); // Ethereum
         _addRemoteAdminRoute(324, 30_165, 0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb); // ZkSync
         _addRemoteAdminRoute(4217, 30_410, 0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f); // Tempo
+        _addRemoteAdminRoute(4663, 30_416, 0xB4BF1a4Bedb27cedc0bfb1eb5f78464d3C2d60b4); // Robinhood
         _addRemoteAdminRoute(5031, 30_380, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Somnia
 
         composeGasOverrides[324] = 1_500_000; // ZkSync
@@ -146,5 +148,11 @@ contract HopConstants {
         chainIdsByEid[eid] = chainId;
         eidsByChainId[chainId] = eid;
         remoteAdminRoutes.push(RemoteAdminRoute({ chainId: chainId, eid: eid }));
+    }
+
+    function _feeMultiplierConfigName(string memory hopName) internal pure returns (string memory name) {
+        if (keccak256(bytes(hopName)) == keccak256(bytes("Hyperliquid"))) return "HyperEVM";
+        if (keccak256(bytes(hopName)) == keccak256(bytes("X-Layer"))) return "XLayer";
+        return hopName;
     }
 }
