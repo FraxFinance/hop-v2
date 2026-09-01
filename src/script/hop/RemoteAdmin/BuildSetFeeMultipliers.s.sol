@@ -92,7 +92,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
             // Read the per-chain calldata JSON produced by generateFeeMultipliers.ts.
             // The TS script's chain names differ from HopConstants for a few chains,
             // so map the canonical HopConstants name to the TS filename stem.
-            string memory tsName = _tsName(target.name);
+            string memory tsName = _feeMultiplierConfigName(target.name);
             string memory jsonPath = string.concat(inputDir, "/", tsName, ".json");
             if (!_fileExists(jsonPath)) {
                 console.log("SKIP", target.name);
@@ -227,14 +227,6 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
     function _feeBufferPct() internal view returns (uint256 pct) {
         pct = vm.envExists("FEE_BUFFER_PCT") ? vm.envUint("FEE_BUFFER_PCT") : 400;
         require(pct >= 100 && pct <= 1000, "FEE_BUFFER_PCT out of range (100..1000)");
-    }
-
-    /// @dev Maps HopConstants chain names to the filename stems used by
-    ///      generateFeeMultipliers.ts (which differ for a few chains).
-    function _tsName(string memory hopName) internal pure returns (string memory ts) {
-        if (keccak256(bytes(hopName)) == keccak256(bytes("Hyperliquid"))) return "HyperEVM";
-        if (keccak256(bytes(hopName)) == keccak256(bytes("X-Layer"))) return "XLayer";
-        return hopName;
     }
 
     /// @dev Returns true if `path` exists. Uses `vm.tryFfi` on `test -f` to avoid
