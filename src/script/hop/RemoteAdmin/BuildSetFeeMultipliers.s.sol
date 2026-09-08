@@ -70,6 +70,10 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
         uint256 feeBufferPct = _feeBufferPct();
 
         vm.createDir(outputDir, true);
+
+        // @dev CREATE2: plain CREATE from a script contract reverts on Fraxtal forks under forge 1.8.x,
+        //      so deploy the helper once with a salt and reuse it for every file.
+        SafeTxHelper safeTxHelper = new SafeTxHelper{ salt: bytes32(0) }();
         RemoteAdminRoute[] storage routes = _remoteAdminRoutes();
 
         console.log("=== BuildSetFeeMultipliers ===");
@@ -164,7 +168,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
                 )
             );
 
-            new SafeTxHelper().writeTxs(txs, filename);
+            safeTxHelper.writeTxs(txs, filename);
             totalValue += fee;
             console.log("Wrote:", filename, "fee=", fee);
             if (reused) {
@@ -192,7 +196,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
             });
 
             string memory filename = string.concat(outputDir, "/30255-Fraxtal(direct).json");
-            new SafeTxHelper().writeTxs(txs, filename);
+            safeTxHelper.writeTxs(txs, filename);
             console.log("Wrote:", filename, "(direct call, no message passing)");
         } else {
             console.log("NOTE: no Fraxtal.json found - FraxtalHopV2 direct call skipped");

@@ -132,13 +132,6 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://mainnet.base.org", "https://base-rpc.publicnode.com"],
   },
   {
-    name: "Berachain",
-    chainId: 80_094,
-    eid: 30_362,
-    executor: "0x4208d6e27538189bb48e603d6123a94b8abe0a0b",
-    rpcs: ["https://rpc.berachain.com", "https://berachain-rpc.publicnode.com"],
-  },
-  {
     name: "BSC",
     chainId: 56,
     eid: 30_102,
@@ -174,13 +167,6 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://rpc.linea.build", "https://linea-rpc.publicnode.com"],
   },
   {
-    name: "Mode",
-    chainId: 34_443,
-    eid: 30_260,
-    executor: "0x4208d6e27538189bb48e603d6123a94b8abe0a0b",
-    rpcs: ["https://mainnet.mode.network", "https://1rpc.io/mode"],
-  },
-  {
     name: "Monad",
     chainId: 143,
     eid: 30_390,
@@ -214,13 +200,6 @@ const CHAINS: ChainConfig[] = [
     eid: 30_416,
     executor: "0x4208d6e27538189bb48e603d6123a94b8abe0a0b",
     rpcs: ["https://rpc.mainnet.chain.robinhood.com"],
-  },
-  {
-    name: "Scroll",
-    chainId: 534_352,
-    eid: 30_214,
-    executor: "0x581b26f362ad383f7b51ef8a165efa13dde398a4",
-    rpcs: ["https://rpc.scroll.io", "https://scroll-rpc.publicnode.com"],
   },
   {
     name: "Sei",
