@@ -84,12 +84,13 @@ interface IRemoteHopTempo {
 ///         that is `frxUSD` only; other Frax OFTs (sfrxUSD, frxETH, sfrxETH,
 ///         WFRAX, FPI) have no StablecoinDEX path and revert in step 1.
 ///
-///         NOTE (verify on fork): step 4 calls `TIP_FEE_MANAGER.setUserToken`
-///         from contract context. The Tempo Solidity spec (the docs/specs copy)
-///         guards it with `onlyDirectCall` (`msg.sender == tx.origin`), but the
-///         deployed `RemoteHopV201Tempo` already calls `setUserToken` from
-///         contract context on every send, so the running precompile permits it.
-///         This must be confirmed against a Tempo fork before mainnet use.
+///         Step 4 calls `TIP_FEE_MANAGER.setUserToken` from contract context.
+///         The deployed fee manager permits that (it enforces only that the
+///         token is a factory-deployed USD TIP20) — the deployed
+///         `RemoteHopV201Tempo` makes the same call on every send. Both
+///         behaviours, and the full send path, are pinned against a Tempo
+///         mainnet fork in `TempoFeeInclusiveWrapperForkTest`
+///         (`forge test --network tempo`).
 /// @author Frax Finance: https://github.com/FraxFinance
 contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     /// @notice The deployed Tempo hop this wrapper forwards to.

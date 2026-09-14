@@ -34,7 +34,13 @@ jobs:
       - run: forge build
       - run: >-
           forge test --no-match-path
-          'src/test/{SimulateEthereumDefaultAdminRole.t.sol,hop/RemoteHopV2TempoForkTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/ThreeChainHopTest.t.sol,vault/RemoteVaultDepositTest.t.sol}'
+          'src/test/{SimulateEthereumDefaultAdminRole.t.sol,hop/RemoteHopV2TempoForkTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/TempoFeeInclusiveWrapperForkTest.t.sol,hop/ThreeChainHopTest.t.sol,vault/RemoteVaultDepositTest.t.sol}'
       - run: >-
           FOUNDRY_PROFILE=testbuild forge test --match-path
           'src/test/vault/RemoteVaultDepositTest.t.sol'
+      # Tempo mainnet-fork tests need the Tempo precompiles compiled into forge's EVM,
+      # which are only enabled under `--network tempo`. Kept out of the default step so
+      # the flag does not change EVM semantics for every other test.
+      - run: >-
+          forge test --network tempo --match-path
+          'src/test/hop/TempoFeeInclusiveWrapperForkTest.t.sol'
