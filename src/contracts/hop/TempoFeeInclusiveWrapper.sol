@@ -71,7 +71,7 @@ interface IRemoteHopTempo {
 ///              live here rather than fixed in calldata, this floor is the
 ///              caller's only protection against the fee moving between quote
 ///              and execution — pass the quote's `toAmountMin` (converted back
-///              to source units), not zero.
+///              to source units). A zero floor is rejected.
 ///           3. Pull exactly `fromAmount` of the bridged token from the caller.
 ///           4. Point THIS wrapper's Fee-Manager token at the bridged token so
 ///              the hop pulls the fee from the wrapper in that same token.
@@ -98,6 +98,7 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
 
     error MsgValueNotZero(uint256 value);
     error ZeroAmount();
+    error ZeroMinNetAmount();
     error FeeExceedsInput(uint256 fee, uint256 maxAmountIn);
     error NetAmountZero();
     error InsufficientNetAmount(uint256 netAmount, uint256 minNetAmount);
@@ -137,7 +138,10 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     ///        the fee is deducted. The fee is re-quoted live inside this call, so
     ///        the bridged amount is not fixed in calldata the way a plain
     ///        `sendOFT` is; this floor is what makes the delivered amount
-    ///        enforceable. Pass 0 only to accept any fee up to `_maxAmountInLD`.
+    ///        enforceable. Must be non-zero: derive it from a quote (the route's
+    ///        `toAmountMin` in source units). Zero reverts with `ZeroMinNetAmount`
+    ///        — it would let the fee consume the whole budget, and it is also
+    ///        what `quoteFeeInclusive` returns when nothing is bridgeable.
     /// @param _dstGas Destination gas for the (composed) delivery.
     /// @param _data Optional compose payload forwarded to the hop.
     function sendOFTFeeInclusive(
@@ -151,6 +155,11 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     ) external payable nonReentrant {
         if (msg.value != 0) revert MsgValueNotZero(msg.value);
         if (_maxAmountInLD == 0) revert ZeroAmount();
+        // A zero floor would disable the only protection against the live fee
+        // eating the budget (see the `_minNetAmountLD` NatSpec). It is also what
+        // `quoteFeeInclusive` returns when nothing is bridgeable, so refusing it
+        // here turns a mistaken echo of that quote into a revert.
+        if (_minNetAmountLD == 0) revert ZeroMinNetAmount();
 
         address feeToken = IOFT(_oft).token();
 
@@ -200,8 +209,12 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     /// @notice Off-chain preview of a fee-inclusive send.
     /// @return feeToken The bridged token the fee is taken from.
     /// @return feeAmount The LayerZero fee (in `feeToken`) deducted from `fromAmount`.
-    /// @return netAmount The dust-cleaned amount that will be bridged, i.e. the
-    ///         same number `sendOFTFeeInclusive` checks against `_minNetAmountLD`.
+    /// @return netAmount The dust-cleaned amount that will be bridged at the
+    ///         current fee. Zero means nothing is bridgeable at this budget (fee
+    ///         >= `_maxAmountInLD`): do not send, and never pass it through as
+    ///         `_minNetAmountLD` — the send rejects a zero floor. For a
+    ///         non-zero result, the floor to pass is this value less the
+    ///         caller's slippage allowance, not the value itself.
     function quoteFeeInclusive(
         address _oft,
         uint32 _dstEid,

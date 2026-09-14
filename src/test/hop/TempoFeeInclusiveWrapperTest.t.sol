@@ -249,6 +249,9 @@ contract TempoFeeInclusiveWrapperTest is Test {
     uint256 internal constant GROSS = 100e18;
     uint256 internal constant FEE = 2e18;
     uint256 internal constant NET = GROSS - FEE;
+    /// @dev Smallest floor the wrapper accepts. Used by tests where the floor is not
+    ///      under test; the floor itself is covered in section f.
+    uint256 internal constant ANY_NET = 1;
 
     /// @dev 18 local decimals against 6 shared decimals — the frxUSD OFT's granularity.
     uint256 internal constant DUST_RATE = 1e12;
@@ -295,7 +298,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         emit SendOFTFeeInclusive(address(oft), alice, DST_EID, recipient, address(frxUsd), NET, FEE, GROSS);
 
         vm.prank(alice);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         assertEq(hop.sendCount(), 1, "hop was called once");
         assertEq(hop.lastAmountLD(), NET, "hop bridged gross - fee");
@@ -321,10 +324,10 @@ contract TempoFeeInclusiveWrapperTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(TIP20Mock.InsufficientAllowance.selector, alice, address(wrapper), GROSS, GROSS - 1)
         );
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         frxUsd.approve(address(wrapper), GROSS);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         vm.stopPrank();
 
@@ -343,7 +346,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
         vm.expectRevert(abi.encodeWithSelector(TempoFeeInclusiveWrapper.MsgValueNotZero.selector, 1 wei));
-        wrapper.sendOFTFeeInclusive{ value: 1 wei }(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive{ value: 1 wei }(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(hop.sendCount(), 0, "nothing was sent");
@@ -357,10 +360,51 @@ contract TempoFeeInclusiveWrapperTest is Test {
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
         vm.expectRevert(TempoFeeInclusiveWrapper.ZeroAmount.selector);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, 0, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, 0, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(hop.sendCount(), 0, "nothing was sent");
+    }
+
+    // ---------------------------------------------------
+    // d2. Zero floor is refused
+    // ---------------------------------------------------
+
+    /// @dev A zero floor would let the live fee consume the whole budget, and it is
+    ///      exactly what `quoteFeeInclusive` returns when nothing is bridgeable — so
+    ///      an integrator echoing that quote must hit a revert, not a silent send.
+    function test_SendOFTFeeInclusive_RevertsOnZeroMinNet() public {
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.startPrank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+        vm.expectRevert(TempoFeeInclusiveWrapper.ZeroMinNetAmount.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        vm.stopPrank();
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "rejected before any pull");
+    }
+
+    /// @dev The full F2 scenario: fee spikes above the budget, the quote reports
+    ///      `netAmount == 0`, the integrator passes that straight through as the floor,
+    ///      and the fee then recedes before the send lands. Previously this bridged a
+    ///      sliver and charged the rest as fee; now it reverts.
+    function test_SendOFTFeeInclusive_EchoedZeroQuoteCannotDisableTheFloor() public {
+        hop.setFeeAmount(GROSS + 1);
+        (, , uint256 quotedNet) = wrapper.quoteFeeInclusive(address(oft), DST_EID, recipient, GROSS, DST_GAS, "");
+        assertEq(quotedNet, 0, "nothing bridgeable at quote time");
+
+        // Fee drops back to almost the whole budget before execution.
+        hop.setFeeAmount(GROSS - 1);
+
+        vm.startPrank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+        vm.expectRevert(TempoFeeInclusiveWrapper.ZeroMinNetAmount.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, quotedNet, DST_GAS, "");
+        vm.stopPrank();
+
+        assertEq(hop.sendCount(), 0, "the echoed zero quote did not become an unprotected send");
     }
 
     // ---------------------------------------------------
@@ -377,13 +421,13 @@ contract TempoFeeInclusiveWrapperTest is Test {
         hop.setFeeAmount(GROSS + 1);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(TempoFeeInclusiveWrapper.FeeExceedsInput.selector, GROSS + 1, GROSS));
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         // fee == gross (the boundary is inclusive: nothing would be left to bridge)
         hop.setFeeAmount(GROSS);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(TempoFeeInclusiveWrapper.FeeExceedsInput.selector, GROSS, GROSS));
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         assertEq(hop.sendCount(), 0, "nothing was sent");
         assertEq(frxUsd.balanceOf(alice), aliceBefore, "the fee is never pulled when it exceeds the budget");
@@ -445,7 +489,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         emit SendOFTFeeInclusive(address(dustOft), alice, DST_EID, recipient, address(frxUsd), expectedNet, fee, GROSS);
 
         vm.prank(alice);
-        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         assertEq(hop.lastAmountLD(), expectedNet, "the floored amount is what bridged");
         assertEq(frxUsd.balanceOf(address(hop)), expectedNet + fee, "hop received floored net + fee");
@@ -468,7 +512,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), gross);
         vm.expectRevert(TempoFeeInclusiveWrapper.NetAmountZero.selector);
-        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, gross, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, gross, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(hop.sendCount(), 0, "nothing was sent");
@@ -483,7 +527,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
     function test_SendOFTFeeInclusive_LeavesNoAllowanceToTheHop() public {
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(frxUsd.allowance(address(wrapper), address(hop)), 0, "wrapper -> hop allowance is cleared");
@@ -492,7 +536,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         hop.setFeeAmount(1e18 + 123);
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
-        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(frxUsd.allowance(address(wrapper), address(hop)), 0, "leftover allowance is zeroed too");
@@ -507,7 +551,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(feeManager.userTokens(address(wrapper)), address(frxUsd), "wrapper bound to the bridged token");
@@ -516,7 +560,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         // Second send with the same fee token must not touch the precompile again.
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(hop.sendCount(), 2, "the second send still went through");
@@ -531,7 +575,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(feeManager.setUserTokenCalls(address(wrapper)), 2, "rebound to the bridged token");
@@ -596,7 +640,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), GROSS);
         vm.expectRevert(RemoteHopFeeInclusiveMock.HopSendReverted.selector);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(frxUsd.balanceOf(alice), aliceBefore, "caller was made whole");
@@ -616,7 +660,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         vm.startPrank(alice);
         vm.expectRevert(TempoFeeInclusiveWrapper.TransferFailed.selector);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         assertEq(hop.sendCount(), 0, "nothing was sent");
@@ -630,7 +674,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(TempoFeeInclusiveWrapper.ApproveFailed.selector);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         assertEq(hop.sendCount(), 0, "nothing was sent");
     }
@@ -645,7 +689,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(TempoFeeInclusiveWrapper.TransferFailed.selector);
-        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
 
         assertEq(frxUsd.balanceOf(address(wrapper)), 0, "the failed refund unwound the whole call");
     }
@@ -676,7 +720,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         vm.startPrank(alice);
         frxUsd.approve(address(wrapper), gross);
-        wrapper.sendOFTFeeInclusive(address(fuzzOft), DST_EID, recipient, gross, 0, DST_GAS, "");
+        wrapper.sendOFTFeeInclusive(address(fuzzOft), DST_EID, recipient, gross, ANY_NET, DST_GAS, "");
         vm.stopPrank();
 
         uint256 spent = aliceBefore - frxUsd.balanceOf(alice);
