@@ -52,9 +52,6 @@ importers:
       solidity-bytes-utils:
         specifier: github:GNSPS/solidity-bytes-utils
         version: https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9
-      tempo:
-        specifier: github:tempoxyz/tempo#v1.0.2
-        version: tempo#v1.0.2@https://codeload.github.com/tempoxyz/tempo/tar.gz/7d2fd47e76f424548c2439eff4c1b4861a58dc2b
       tempoxyz/tempo-std:
         specifier: github:tempoxyz/tempo-std
         version: tempo-std@https://codeload.github.com/tempoxyz/tempo-std/tar.gz/744b43d6dcb0c59b8192b91792c3204a020a6423
@@ -1767,10 +1764,6 @@ packages:
     resolution:
       { integrity: sha512-9kY+CygyYM6j02t5YFHbNz2FN5QmYGv9zAjVp4lCDjlCw7amdckXlEt/bjMhUIfj4ThGRE4gCUH5+yGnNuPo5A== }
     engines: { node: ">=10.0.0" }
-
-  tempo#v1.0.2@https://codeload.github.com/tempoxyz/tempo/tar.gz/7d2fd47e76f424548c2439eff4c1b4861a58dc2b:
-    resolution: { tarball: https://codeload.github.com/tempoxyz/tempo/tar.gz/7d2fd47e76f424548c2439eff4c1b4861a58dc2b }
-    version: 0.0.0
 
   tempo-std@https://codeload.github.com/tempoxyz/tempo-std/tar.gz/744b43d6dcb0c59b8192b91792c3204a020a6423:
     resolution:
@@ -3567,8 +3560,6 @@ snapshots:
       slice-ansi: 4.0.0
       string-width: 4.2.3
       strip-ansi: 6.0.1
-
-  tempo#v1.0.2@https://codeload.github.com/tempoxyz/tempo/tar.gz/7d2fd47e76f424548c2439eff4c1b4861a58dc2b: {}
 
   tempo-std@https://codeload.github.com/tempoxyz/tempo-std/tar.gz/744b43d6dcb0c59b8192b91792c3204a020a6423: {}
 
