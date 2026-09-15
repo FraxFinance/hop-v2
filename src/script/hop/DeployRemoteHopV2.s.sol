@@ -5,6 +5,8 @@ import { console } from "forge-std/Script.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
 import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
+import { IHopV201 } from "src/contracts/interfaces/IHopV201.sol";
+import { HopConstants, HopV2Target } from "src/script/hop/HopConstants.sol";
 
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -30,7 +32,7 @@ interface IOFT {
     function token() external view returns (address);
 }
 
-abstract contract DeployRemoteHopV2 is Script {
+abstract contract DeployRemoteHopV2 is Script, HopConstants {
     address constant FRAXTAL_HOP = 0x00000000e18aFc20Afe54d4B2C8688bB60c06B36;
     address constant FRAXTAL_MSIG = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
 
@@ -53,6 +55,7 @@ abstract contract DeployRemoteHopV2 is Script {
 
     function run() public virtual {
         _validateAddrs();
+        bytes memory feeMultipliersCalldata = _loadFeeMultipliersCalldata();
 
         vm.startBroadcast();
 
@@ -61,14 +64,13 @@ abstract contract DeployRemoteHopV2 is Script {
         approvedOfts.push(frxEthOft);
         approvedOfts.push(sfrxEthOft);
         approvedOfts.push(wFraxOft);
-        approvedOfts.push(fpiOft);
 
         address remoteHop = deployRemoteHopV2({
             _proxyAdmin: proxyAdmin,
             _localEid: localEid,
             _endpoint: endpoint,
             _fraxtalHop: bytes32(uint256(uint160(FRAXTAL_HOP))),
-            _numDVNs: 3,
+            _numDVNs: _numDVNs(),
             _EXECUTOR: EXECUTOR,
             _DVN: DVN,
             _TREASURY: ISendLibrary(SEND_LIBRARY).treasury(),
@@ -76,35 +78,32 @@ abstract contract DeployRemoteHopV2 is Script {
         });
         console.log("RemoteHopV2 deployed at:", remoteHop);
 
+        _configureRemoteHop(remoteHop, feeMultipliersCalldata);
+
         address remoteAdmin = _deployRemoteAdmin(remoteHop);
         console.log("RemoteAdmin deployed at:", remoteAdmin);
 
         // grant Pauser roles to msig signers
         bytes32 PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
 
-        // grant Recover roles to msig signers
+        // RECOVER_ETH_ROLE goes to the chain msig only, matching every live spoke
         bytes32 RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
 
         // sam
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x17e06ce6914E3969f7BD37D8b2a563890cA1c96e);
-        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x17e06ce6914E3969f7BD37D8b2a563890cA1c96e);
         // dhruvin
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x8d8290d49e88D16d81C6aDf6C8774eD88762274A);
-        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x8d8290d49e88D16d81C6aDf6C8774eD88762274A);
         // travis
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0xcbc616D595D38483e6AdC45C7E426f44bF230928);
-        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0xcbc616D595D38483e6AdC45C7E426f44bF230928);
         // thomas
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x381e2495e683868F693AA5B1414F712f21d34b40);
-        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x381e2495e683868F693AA5B1414F712f21d34b40);
         // nader
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0x6e74053a3798e0fC9a9775F7995316b27f21c4D2);
-        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x6e74053a3798e0fC9a9775F7995316b27f21c4D2);
         // dennis
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0xC6EF452b0de9E95Ccb153c2A5A7a90154aab3419);
-        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0xC6EF452b0de9E95Ccb153c2A5A7a90154aab3419);
 
-        // transfer admin role to msig & RemoteAdmin and renounce from deployer
+        // grant Recover role to the msig and transfer admin role to msig & RemoteAdmin, then renounce from deployer
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, msig);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), msig);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), remoteAdmin);
         RemoteHopV2(payable(remoteHop)).renounceRole(bytes32(0), msg.sender);
@@ -124,17 +123,63 @@ abstract contract DeployRemoteHopV2 is Script {
 
         require(msig != address(0), "msig is not set");
         require(proxyAdmin != address(0), "proxyAdmin is not set");
+        require(_numDVNs() != 0, "numDVNs is not set");
 
         require(isStringEqual(IERC20Metadata(IOFT(frxUsdOft).token()).symbol(), "frxUSD"), "frxUsdOft != frxUSD");
         require(isStringEqual(IERC20Metadata(IOFT(sfrxUsdOft).token()).symbol(), "sfrxUSD"), "sfrxUsdOft != sfrxUSD");
         require(isStringEqual(IERC20Metadata(IOFT(frxEthOft).token()).symbol(), "frxETH"), "frxEthOft != frxETH");
         require(isStringEqual(IERC20Metadata(IOFT(sfrxEthOft).token()).symbol(), "sfrxETH"), "sfrxEthOft != sfrxETH");
         require(isStringEqual(IERC20Metadata(IOFT(wFraxOft).token()).symbol(), "WFRAX"), "wFraxOft != WFRAX");
-        require(isStringEqual(IERC20Metadata(IOFT(fpiOft).token()).symbol(), "FPI"), "fpiOft != FPI");
+        // FPI is retired: chains onboarded after (Robinhood onward) have no FPI OFT deployed,
+        // so their child scripts leave fpiOft unset and every FPI step is skipped.
+        if (fpiOft != address(0)) {
+            require(isStringEqual(IERC20Metadata(IOFT(fpiOft).token()).symbol(), "FPI"), "fpiOft != FPI");
+        }
     }
 
     function isStringEqual(string memory _a, string memory _b) public pure returns (bool) {
         return keccak256(abi.encodePacked(_a)) == keccak256(abi.encodePacked(_b));
+    }
+
+    function _numDVNs() internal pure virtual returns (uint32) {
+        return 3;
+    }
+
+    function _loadFeeMultipliersCalldata() internal view returns (bytes memory data) {
+        HopV2Target storage target = _hopV2TargetFor(block.chainid);
+        string memory filename = string.concat("out/feeMultipliers/", _feeMultiplierConfigName(target.name), ".json");
+        string memory json = vm.readFile(filename);
+
+        require(vm.parseJsonUint(json, ".chainId") == block.chainid, "fee multiplier chainId mismatch");
+        require(vm.parseJsonUint(json, ".eid") == localEid, "fee multiplier eid mismatch");
+
+        data = vm.parseJsonBytes(json, ".setFeeMultipliersBatchCalldata");
+        require(data.length >= 4, "fee multiplier calldata missing");
+
+        bytes4 selector;
+        assembly {
+            selector := mload(add(data, 0x20))
+        }
+        require(selector == IHopV201.setFeeMultipliersBatch.selector, "invalid fee multiplier calldata");
+    }
+
+    function _configureRemoteHop(address remoteHop, bytes memory feeMultipliersCalldata) internal {
+        RemoteHopV2 hop = RemoteHopV2(payable(remoteHop));
+
+        hop.setExecutorOptions(30_168, hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0");
+        hop.setExecutorOptions(30_410, abi.encodePacked(uint8(1), uint16(17), uint8(1), uint128(2_500_000)));
+        hop.setExecutorOptions(30_380, abi.encodePacked(uint8(1), uint16(17), uint8(1), uint128(1_000_000)));
+
+        (bool success, ) = remoteHop.call(feeMultipliersCalldata);
+        require(success, "Unable to set fee multipliers");
+
+        // FPI is deliberately omitted from the initializer so it is never transiently approved.
+        // On chains where FPI exists (pre-retirement), disable it explicitly for belt-and-braces.
+        if (fpiOft != address(0)) {
+            hop.setApprovedOft(fpiOft, false);
+            require(!hop.approvedOft(fpiOft), "FPI OFT is still approved");
+        }
+        require(hop.numDVNs() == _numDVNs(), "numDVNs mismatch");
     }
 
     function _deployRemoteAdmin(address remoteHop) internal virtual returns (address) {
@@ -186,23 +231,20 @@ function deployRemoteHopV2(
     if (!isTest) require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
 
     // deploy v201 implementation and upgrade the proxy to the new imp
-    address hopV201 = address(
-        new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956ce6ac70492feaa59e63000008) }()
-    );
-    if (!isTest) require(hopV201 == 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd, "hopV201 address mismatch");
+    // @dev the canonical V201 address was minted with the default profile (optimizer_runs = 200,
+    //      see UpgradeRemoteHopV2.s.sol) while this script compiles under FOUNDRY_PROFILE=deploy
+    //      for the V2/proxy salts, so on a live chain V201 is pre-deployed by
+    //      DeployRemoteHopV201.s.sol and picked up here; the fresh deploy below only runs in tests.
+    address hopV201 = 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd;
+    if (hopV201.code.length == 0) {
+        hopV201 = address(
+            new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956ce6ac70492feaa59e63000008) }()
+        );
+        if (!isTest) require(hopV201 == 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd, "hopV201 address mismatch");
+    }
 
     ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(hopV201, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);
-
-    // set solana enforced options
-    RemoteHopV2(payable(address(proxy))).setExecutorOptions(
-        30_168,
-        hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0"
-    );
-    // set tempo enforced options
-    RemoteHopV2(payable(address(proxy))).setExecutorOptions(30_410, hex"01002101000000000000000000000000002625A0");
-    // set somnia enforced options
-    RemoteHopV2(payable(address(proxy))).setExecutorOptions(30_380, hex"010021010000000000000000000000000016E360");
 
     return payable(address(proxy));
 }

@@ -67,7 +67,7 @@ num_dvns_for_chain() {
   local chain_id="$1"
 
   case "${chain_id}" in
-    5031|747474) echo "4" ;;
+    4663|5031|747474) echo "4" ;;
     *) echo "${NUM_DVNS_DEFAULT}" ;;
   esac
 }
@@ -112,6 +112,7 @@ CHAIN_IDS=(
   1329
   2741
   4217
+  4663
   5031
   8453
   98866
