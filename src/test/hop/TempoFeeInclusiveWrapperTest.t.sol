@@ -362,6 +362,31 @@ contract TempoFeeInclusiveWrapperTest is Test {
     }
 
     // ---------------------------------------------------
+    // c2. Compose payloads are refused
+    // ---------------------------------------------------
+
+    /// @dev The hop stamps `msg.sender` — this wrapper — as the message sender, so a
+    ///      destination composer would see every user as one address. Rather than
+    ///      document that hazard, the wrapper closes the path. Proven to run before any
+    ///      pull: alice grants no allowance, so a pull-first ordering would surface the
+    ///      token's allowance error instead.
+    function test_SendOFTFeeInclusive_RevertsOnComposeData() public {
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.ComposeNotSupported.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, hex"01");
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "no funds moved");
+    }
+
+    function test_QuoteFeeInclusive_RevertsOnComposeData() public {
+        vm.expectRevert(TempoFeeInclusiveWrapper.ComposeNotSupported.selector);
+        wrapper.quoteFeeInclusive(address(oft), DST_EID, recipient, GROSS, DST_GAS, hex"01");
+    }
+
+    // ---------------------------------------------------
     // d. Zero gross budget
     // ---------------------------------------------------
 

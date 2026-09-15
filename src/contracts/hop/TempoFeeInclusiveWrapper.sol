@@ -61,7 +61,12 @@ interface IRemoteHopTempo {
 ///         source-token budget: the caller grants ONE approval of the bridged
 ///         token for exactly `fromAmount`, `msg.value` is zero, the LayerZero
 ///         fee is deducted from that same token, and only the net remainder is
-///         bridged.
+///         bridged. Plain transfers only — compose payloads are rejected
+///         (see `_data`).
+///
+///         This contract is immutable, ownerless and holds no balance between
+///         calls. There is no recovery function: tokens transferred to it
+///         directly, outside `sendOFTFeeInclusive`, cannot be retrieved.
 ///
 ///         Flow (all atomic):
 ///           1. Quote the fee in the bridged token via `hop.quoteStatic`.
@@ -103,6 +108,7 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     IRemoteHopTempo public immutable HOP;
 
     error MsgValueNotZero(uint256 value);
+    error ComposeNotSupported();
     error ZeroAmount();
     error ZeroMinNetAmount();
     error FeeExceedsInput(uint256 fee, uint256 maxAmountIn);
@@ -148,8 +154,15 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     ///        `toAmountMin` in source units). Zero reverts with `ZeroMinNetAmount`
     ///        — it would let the fee consume the whole budget, and it is also
     ///        what `quoteFeeInclusive` returns when nothing is bridgeable.
-    /// @param _dstGas Destination gas for the (composed) delivery.
-    /// @param _data Optional compose payload forwarded to the hop.
+    /// @param _dstGas Destination gas for the delivery (the hub-to-destination
+    ///        leg when `_dstEid` is not Fraxtal).
+    /// @param _data Must be empty. Compose is not supported through this
+    ///        entrypoint: the hop records `msg.sender` — this contract, not the
+    ///        caller — as the message sender, so a destination composer would
+    ///        see every user as the same address and could not attribute,
+    ///        authenticate or refund correctly. Kept in the signature so the
+    ///        ABI matches the hop's `sendOFT` shape. Callers needing compose
+    ///        should use the hop directly.
     function sendOFTFeeInclusive(
         address _oft,
         uint32 _dstEid,
@@ -160,6 +173,7 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         bytes memory _data
     ) external payable nonReentrant {
         if (msg.value != 0) revert MsgValueNotZero(msg.value);
+        if (_data.length != 0) revert ComposeNotSupported();
         if (_maxAmountInLD == 0) revert ZeroAmount();
         // A zero floor would disable the only protection against the live fee
         // eating the budget (see the `_minNetAmountLD` NatSpec). It is also what
@@ -235,6 +249,9 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         uint128 _dstGas,
         bytes memory _data
     ) external view returns (address feeToken, uint256 feeAmount, uint256 netAmount) {
+        // Same input contract as the send: a quote for a call shape the send
+        // rejects would be misleading.
+        if (_data.length != 0) revert ComposeNotSupported();
         feeToken = IOFT(_oft).token();
         feeAmount = HOP.quoteStatic(_oft, _dstEid, _recipient, _maxAmountInLD, _dstGas, _data, feeToken);
         netAmount = _maxAmountInLD > feeAmount ? HOP.removeDust(_oft, _maxAmountInLD - feeAmount) : 0;
