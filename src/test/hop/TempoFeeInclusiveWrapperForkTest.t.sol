@@ -59,6 +59,7 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
     address internal constant SFRXUSD_OFT = 0x00000000fD8C4B8A413A06821456801295921a71;
 
     uint32 internal constant FRAXTAL_EID = 30_255;
+    uint32 internal constant TEMPO_EID = 30_410;
     uint128 internal constant DST_GAS = 400_000;
     uint256 internal constant GROSS = 100e6;
 
@@ -148,6 +149,32 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
             StdPrecompiles.TIP_FEE_MANAGER.userTokens(address(wrapper)),
             FRXUSD,
             "wrapper's fee-manager token was bound to the bridged token"
+        );
+    }
+
+    /// @dev Tempo -> Tempo: the hop quotes no fee, so the wrapper must not bind its
+    ///      fee-manager token (there is nothing to collect) and the full budget lands
+    ///      with the recipient. Exercises the local branch of the real hop and the real
+    ///      TIP20 transfer.
+    function test_SendOFTFeeInclusive_LocalSend_NoFeeNoFeeManagerBinding() public {
+        address bob = makeAddr("bob");
+        bytes32 toBob = bytes32(uint256(uint160(bob)));
+
+        (, uint256 fee, uint256 net) = wrapper.quoteFeeInclusive(FRXUSD_OFT, TEMPO_EID, toBob, GROSS, DST_GAS, "");
+        assertEq(fee, 0, "no LayerZero fee on a local send");
+        assertEq(net, GROSS, "whole budget is bridgeable");
+
+        vm.prank(alice);
+        ITIP20(FRXUSD).approve(address(wrapper), GROSS);
+        vm.prank(alice);
+        wrapper.sendOFTFeeInclusive(FRXUSD_OFT, TEMPO_EID, toBob, GROSS, net, DST_GAS, "");
+
+        assertEq(ITIP20(FRXUSD).balanceOf(bob), GROSS, "recipient received the full budget, fee-free");
+        assertEq(ITIP20(FRXUSD).balanceOf(address(wrapper)), 0, "wrapper retains nothing");
+        assertEq(
+            StdPrecompiles.TIP_FEE_MANAGER.userTokens(address(wrapper)),
+            address(0),
+            "fee-manager binding skipped when no fee is collected"
         );
     }
 

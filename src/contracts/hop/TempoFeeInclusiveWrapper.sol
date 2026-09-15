@@ -72,21 +72,27 @@ interface IRemoteHopTempo {
 ///              caller's only protection against the fee moving between quote
 ///              and execution — pass the quote's `toAmountMin` (converted back
 ///              to source units). A zero floor is rejected.
-///           3. Pull exactly `fromAmount` of the bridged token from the caller.
-///           4. Point THIS wrapper's Fee-Manager token at the bridged token so
+///           3. Point THIS wrapper's Fee-Manager token at the bridged token so
 ///              the hop pulls the fee from the wrapper in that same token.
+///              Skipped when the fee is zero (local sends). Runs before any
+///              funds move, so the fee manager's own rejection of an
+///              unsupported token also lands before the pull.
+///           4. Pull exactly `fromAmount` of the bridged token from the caller.
 ///           5. Call the deployed `hop.sendOFT` with the net amount; the hop
 ///              pulls `net` (bridge) + `fee` (fee) — both from the wrapper.
 ///           6. Refund any sub-dust remainder to the caller.
 ///
-///         Scope: viable only for bridged tokens whose LayerZero fee can be
-///         settled in a whitelisted EndpointV2Alt stablecoin. On Tempo today
-///         that is `frxUSD` only; other Frax OFTs (sfrxUSD, frxETH, sfrxETH,
-///         WFRAX, FPI) have no StablecoinDEX path and revert in step 1.
+///         Scope: the bridged token must satisfy two independent checks.
+///           - Step 1: its LayerZero fee can be settled in a whitelisted
+///             EndpointV2Alt stablecoin, directly or via a StablecoinDEX swap.
+///           - Step 3: it is a factory-deployed USD TIP20, which is what the
+///             fee manager requires of any token it is bound to.
+///         On Tempo today only `frxUSD` passes both; other Frax OFTs (sfrxUSD,
+///         frxETH, sfrxETH, WFRAX, FPI) fail step 1 for remote sends and step 3
+///         for local ones. Either way the revert precedes the pull.
 ///
-///         Step 4 calls `TIP_FEE_MANAGER.setUserToken` from contract context.
-///         The deployed fee manager permits that (it enforces only that the
-///         token is a factory-deployed USD TIP20) — the deployed
+///         Step 3 calls `TIP_FEE_MANAGER.setUserToken` from contract context.
+///         The deployed fee manager permits that — the deployed
 ///         `RemoteHopV201Tempo` makes the same call on every send. Both
 ///         behaviours, and the full send path, are pinned against a Tempo
 ///         mainnet fork in `TempoFeeInclusiveWrapperForkTest`
@@ -180,15 +186,21 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         if (netAmount == 0) revert NetAmountZero();
         if (netAmount < _minNetAmountLD) revert InsufficientNetAmount(netAmount, _minNetAmountLD);
 
-        // 3. Single pull of the source token for exactly `fromAmount`.
-        uint256 balanceBefore = ITIP20(feeToken).balanceOf(address(this));
-        if (!ITIP20(feeToken).transferFrom(msg.sender, address(this), _maxAmountInLD)) revert TransferFailed();
-
-        // 4. Make the hop pull the fee from THIS wrapper in `feeToken` (not the
-        //    default PATH_USD). Idempotent — only writes when it would change.
-        if (StdPrecompiles.TIP_FEE_MANAGER.userTokens(address(this)) != feeToken) {
+        // 3. Make the hop pull the fee from THIS wrapper in `feeToken` (not the
+        //    default PATH_USD). Done before any funds move: the fee manager only
+        //    accepts factory-deployed USD TIP20s, a stricter test than the quote
+        //    in step 1, so its rejection must also land before the pull. Skipped
+        //    when no fee is collected (local sends) — the binding would be dead
+        //    state, and on that path step 1 never inspects the token at all.
+        //    Idempotent — only writes when it would change.
+        if (feeAmount != 0 && StdPrecompiles.TIP_FEE_MANAGER.userTokens(address(this)) != feeToken) {
             StdPrecompiles.TIP_FEE_MANAGER.setUserToken(feeToken);
         }
+
+        // 4. Single pull of the source token for exactly `fromAmount`. Every
+        //    precondition the wrapper can check has passed by this point.
+        uint256 balanceBefore = ITIP20(feeToken).balanceOf(address(this));
+        if (!ITIP20(feeToken).transferFrom(msg.sender, address(this), _maxAmountInLD)) revert TransferFailed();
 
         // 5. Approve the gross budget (the hop pulls `netAmount` to bridge plus
         //    the fee it re-derives) and send. The allowance is the user's stated

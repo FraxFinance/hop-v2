@@ -207,14 +207,23 @@ contract RemoteHopFeeInclusiveMock {
 
 /// @notice `TIP_FEE_MANAGER` precompile stand-in, etched at the precompile address.
 /// @dev Counts `setUserToken` calls per account so the wrapper's "only write when it
-///      would change" branch can be asserted.
+///      would change" branch can be asserted. `rejectedToken` mirrors the real
+///      precompile refusing a token that is not a factory-deployed USD TIP20.
 contract TipFeeManagerMock {
+    error InvalidToken();
+
     event UserTokenSet(address indexed user, address indexed token);
 
     mapping(address user => address token) public userTokens;
     mapping(address user => uint256 count) public setUserTokenCalls;
+    address public rejectedToken;
+
+    function setRejectedToken(address _token) external {
+        rejectedToken = _token;
+    }
 
     function setUserToken(address _token) external {
+        if (_token == rejectedToken) revert InvalidToken();
         userTokens[msg.sender] = _token;
         setUserTokenCalls[msg.sender] += 1;
         emit UserTokenSet(msg.sender, _token);
@@ -580,6 +589,45 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         assertEq(feeManager.setUserTokenCalls(address(wrapper)), 2, "rebound to the bridged token");
         assertEq(feeManager.userTokens(address(wrapper)), address(frxUsd), "bridged token is now the fee token");
+    }
+
+    // ---------------------------------------------------
+    // j2. Fee-manager binding is ordered before the pull and skipped when unneeded
+    // ---------------------------------------------------
+
+    /// @dev With no fee there is nothing for the hop to pull in `feeToken`, so binding
+    ///      the wrapper's fee-manager token would be dead state — and on a local send
+    ///      the quote never inspects the token, so the binding is also the only place
+    ///      an unsupported token could still revert. It must not run.
+    function test_SendOFTFeeInclusive_SkipsUserTokenWriteWhenFeeIsZero() public {
+        hop.setFeeAmount(0);
+
+        vm.startPrank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+        vm.stopPrank();
+
+        assertEq(hop.sendCount(), 1, "sent");
+        assertEq(hop.lastAmountLD(), GROSS, "whole budget bridged when there is no fee");
+        assertEq(feeManager.setUserTokenCalls(address(wrapper)), 0, "no fee-manager write");
+        assertEq(feeManager.userTokens(address(wrapper)), address(0), "wrapper left unbound");
+    }
+
+    /// @dev The fee manager is stricter than the quote (factory USD TIP20 vs. "has a fee
+    ///      path"). Its rejection must land before `transferFrom`, so the wrapper's
+    ///      "reverts fast, before any pull" promise holds for that gate too. Proven by
+    ///      ordering: alice grants NO allowance, so if the pull ran first the revert
+    ///      would be the token's `InsufficientAllowance`, not the fee manager's.
+    function test_SendOFTFeeInclusive_FeeManagerRejectionPrecedesThePull() public {
+        feeManager.setRejectedToken(address(frxUsd));
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(TipFeeManagerMock.InvalidToken.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "no funds moved");
     }
 
     // ---------------------------------------------------
