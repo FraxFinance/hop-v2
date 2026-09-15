@@ -40,6 +40,12 @@ interface IRemoteHopTempo {
     ///      The wrapper pre-cleans with it so the amount it checks and emits is
     ///      exactly the amount that crosses.
     function removeDust(address _oft, uint256 _amountLD) external view returns (uint256);
+
+    /// @notice True while the hop's admin has paused all sends.
+    function paused() external view returns (bool);
+
+    /// @notice True for OFTs the hop's admin has allow-listed for bridging.
+    function approvedOft(address _oft) external view returns (bool);
 }
 
 // ====================================================================
@@ -109,6 +115,10 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
 
     error MsgValueNotZero(uint256 value);
     error ComposeNotSupported();
+    /// @dev Same selectors as the hop's own errors, so a decoder built for the
+    ///      hop reads the wrapper's pre-checks identically.
+    error HopPaused();
+    error InvalidOFT();
     error ZeroAmount();
     error ZeroMinNetAmount();
     error FeeExceedsInput(uint256 fee, uint256 maxAmountIn);
@@ -180,6 +190,7 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         // `quoteFeeInclusive` returns when nothing is bridgeable, so refusing it
         // here turns a mistaken echo of that quote into a revert.
         if (_minNetAmountLD == 0) revert ZeroMinNetAmount();
+        _requireHopAccepts(_oft);
 
         address feeToken = IOFT(_oft).token();
 
@@ -249,11 +260,21 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         uint128 _dstGas,
         bytes memory _data
     ) external view returns (address feeToken, uint256 feeAmount, uint256 netAmount) {
-        // Same input contract as the send: a quote for a call shape the send
-        // rejects would be misleading.
+        // Same input contract as the send: a quote for a call the send would
+        // reject — bad shape, paused hop, unlisted OFT — would be misleading.
         if (_data.length != 0) revert ComposeNotSupported();
+        _requireHopAccepts(_oft);
         feeToken = IOFT(_oft).token();
         feeAmount = HOP.quoteStatic(_oft, _dstEid, _recipient, _maxAmountInLD, _dstGas, _data, feeToken);
         netAmount = _maxAmountInLD > feeAmount ? HOP.removeDust(_oft, _maxAmountInLD - feeAmount) : 0;
+    }
+
+    /// @dev The two hop-side gates `hop.sendOFT` applies first. Mirrored here so
+    ///      the quote fails closed during an incident instead of serving numbers
+    ///      for a send that cannot land, and so the send surfaces them before any
+    ///      external call rather than from inside the hop after the pull.
+    function _requireHopAccepts(address _oft) internal view {
+        if (HOP.paused()) revert HopPaused();
+        if (!HOP.approvedOft(_oft)) revert InvalidOFT();
     }
 }

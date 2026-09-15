@@ -15,6 +15,13 @@ interface IOFTView {
     function decimalConversionRate() external view returns (uint256);
 }
 
+/// @dev Admin surface of the deployed hop, used to stage an incident on the fork.
+interface IHopAdmin {
+    function pauseOn() external;
+
+    function setApprovedOft(address _oft, bool _isApproved) external;
+}
+
 /// @dev Stand-in for "any contract" calling the fee manager: `msg.sender` is this contract,
 ///      `tx.origin` is whoever sent the transaction — exactly the wrapper's frame.
 contract SetUserTokenCaller {
@@ -57,6 +64,8 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
     address internal constant FRXUSD_OFT = 0x00000000D61733e7A393A10A5B48c311AbE8f1E5;
     /// @dev An OFT token that is NOT a TIP20 — the fee manager must reject it.
     address internal constant SFRXUSD_OFT = 0x00000000fD8C4B8A413A06821456801295921a71;
+    /// @dev RemoteAdmin: holds DEFAULT_ADMIN_ROLE on the deployed hop.
+    address internal constant HOP_ADMIN = 0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f;
 
     uint32 internal constant FRAXTAL_EID = 30_255;
     uint32 internal constant TEMPO_EID = 30_410;
@@ -176,6 +185,35 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
             address(0),
             "fee-manager binding skipped when no fee is collected"
         );
+    }
+
+    /// @dev Stage an incident on the real hop: its admin pauses it. The quote must
+    ///      fail closed (no healthy numbers for a send that cannot land) and the send
+    ///      must reject before pulling, not from inside the hop afterwards.
+    function test_HopPaused_QuoteAndSendFailClosed() public {
+        vm.prank(HOP_ADMIN);
+        IHopAdmin(REMOTE_HOP_TEMPO).pauseOn();
+
+        vm.expectRevert(TempoFeeInclusiveWrapper.HopPaused.selector);
+        wrapper.quoteFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, DST_GAS, "");
+
+        uint256 aliceBefore = ITIP20(FRXUSD).balanceOf(alice);
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.HopPaused.selector);
+        wrapper.sendOFTFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, GROSS / 2, DST_GAS, "");
+        assertEq(ITIP20(FRXUSD).balanceOf(alice), aliceBefore, "rejected before any pull");
+    }
+
+    function test_UnapprovedOft_QuoteAndSendFailClosed() public {
+        vm.prank(HOP_ADMIN);
+        IHopAdmin(REMOTE_HOP_TEMPO).setApprovedOft(FRXUSD_OFT, false);
+
+        vm.expectRevert(TempoFeeInclusiveWrapper.InvalidOFT.selector);
+        wrapper.quoteFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, DST_GAS, "");
+
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.InvalidOFT.selector);
+        wrapper.sendOFTFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, GROSS / 2, DST_GAS, "");
     }
 
     function test_SendOFTFeeInclusive_RevertsBelowMinNet() public {

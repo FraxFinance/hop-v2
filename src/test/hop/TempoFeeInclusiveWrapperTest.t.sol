@@ -132,6 +132,8 @@ contract RemoteHopFeeInclusiveMock {
 
     uint256 public feeAmount;
     bool public revertOnSend;
+    bool public paused;
+    mapping(address oft => bool isApproved) public approvedOft;
 
     uint256 public sendCount;
     address public lastOft;
@@ -148,6 +150,14 @@ contract RemoteHopFeeInclusiveMock {
 
     function setRevertOnSend(bool _value) external {
         revertOnSend = _value;
+    }
+
+    function setPaused(bool _value) external {
+        paused = _value;
+    }
+
+    function setApprovedOft(address _oft, bool _isApproved) external {
+        approvedOft[_oft] = _isApproved;
     }
 
     /// @dev The LayerZero fee does not vary with the bridged amount, so the mock
@@ -283,6 +293,8 @@ contract TempoFeeInclusiveWrapperTest is Test {
         oft = new OFTMock(address(frxUsd), 1);
         dustOft = new OFTMock(address(frxUsd), DUST_RATE);
         hop = new RemoteHopFeeInclusiveMock();
+        hop.setApprovedOft(address(oft), true);
+        hop.setApprovedOft(address(dustOft), true);
         wrapper = new TempoFeeInclusiveWrapper(address(hop));
 
         // Stand the Tempo fee-manager precompile up in-memory so no fork is needed.
@@ -384,6 +396,52 @@ contract TempoFeeInclusiveWrapperTest is Test {
     function test_QuoteFeeInclusive_RevertsOnComposeData() public {
         vm.expectRevert(TempoFeeInclusiveWrapper.ComposeNotSupported.selector);
         wrapper.quoteFeeInclusive(address(oft), DST_EID, recipient, GROSS, DST_GAS, hex"01");
+    }
+
+    // ---------------------------------------------------
+    // c3. Hop-side gates are mirrored: paused hop, unlisted OFT
+    // ---------------------------------------------------
+
+    /// @dev The hop checks these first in `sendOFT`, after the wrapper has already
+    ///      pulled. Mirroring them lets the quote fail closed during an incident and
+    ///      moves the send's revert ahead of the pull (ordering proven by granting no
+    ///      allowance: a pull-first path would surface the token's error instead).
+    function test_SendOFTFeeInclusive_RevertsWhenHopPaused() public {
+        hop.setPaused(true);
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.HopPaused.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "no funds moved");
+    }
+
+    function test_QuoteFeeInclusive_RevertsWhenHopPaused() public {
+        hop.setPaused(true);
+
+        vm.expectRevert(TempoFeeInclusiveWrapper.HopPaused.selector);
+        wrapper.quoteFeeInclusive(address(oft), DST_EID, recipient, GROSS, DST_GAS, "");
+    }
+
+    function test_SendOFTFeeInclusive_RevertsOnUnapprovedOft() public {
+        OFTMock unlisted = new OFTMock(address(frxUsd), 1);
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.InvalidOFT.selector);
+        wrapper.sendOFTFeeInclusive(address(unlisted), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "no funds moved");
+    }
+
+    /// @dev The allow-list is checked before `IOFT(_oft).token()`, so an address that
+    ///      is not an OFT at all gets the same clean error rather than a raw revert.
+    function test_QuoteFeeInclusive_RevertsOnUnapprovedOft() public {
+        vm.expectRevert(TempoFeeInclusiveWrapper.InvalidOFT.selector);
+        wrapper.quoteFeeInclusive(makeAddr("not-an-oft"), DST_EID, recipient, GROSS, DST_GAS, "");
     }
 
     // ---------------------------------------------------
@@ -786,6 +844,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         uint256 fee = _bound(_fee, 0, gross - rate);
 
         OFTMock fuzzOft = new OFTMock(address(frxUsd), rate);
+        hop.setApprovedOft(address(fuzzOft), true);
         hop.setFeeAmount(fee);
 
         uint256 expectedNet = ((gross - fee) / rate) * rate;
