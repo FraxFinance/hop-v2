@@ -134,6 +134,11 @@ contract RemoteHopFeeInclusiveMock {
     bool public revertOnSend;
     bool public paused;
     mapping(address oft => bool isApproved) public approvedOft;
+    /// @dev When set, the fee actually pulled on send differs from the quoted one —
+    ///      the only way to observe that the wrapper reports what was taken, not
+    ///      what was quoted, and that an over-collection cannot slip through.
+    bool public overrideCollectedFee;
+    uint256 public collectedFee;
 
     uint256 public sendCount;
     address public lastOft;
@@ -154,6 +159,11 @@ contract RemoteHopFeeInclusiveMock {
 
     function setPaused(bool _value) external {
         paused = _value;
+    }
+
+    function setCollectedFee(uint256 _fee) external {
+        overrideCollectedFee = true;
+        collectedFee = _fee;
     }
 
     function setApprovedOft(address _oft, bool _isApproved) external {
@@ -194,7 +204,7 @@ contract RemoteHopFeeInclusiveMock {
         address oftToken = IOftView(_oft).token();
         if (amount > 0) ITIP20Minimal(oftToken).transferFrom(msg.sender, address(this), amount);
 
-        uint256 fee = feeAmount;
+        uint256 fee = overrideCollectedFee ? collectedFee : feeAmount;
         address feeToken;
         if (fee > 0) {
             feeToken = IFeeManagerMinimal(StdPrecompiles.TIP_FEE_MANAGER_ADDRESS).userTokens(msg.sender);
@@ -588,6 +598,61 @@ contract TempoFeeInclusiveWrapperTest is Test {
         assertEq(frxUsd.balanceOf(alice), aliceBefore - expectedNet - fee, "the dust came back to the caller");
         assertEq(aliceBefore - frxUsd.balanceOf(alice), GROSS - expectedRefund, "net spend excludes the refund");
         assertEq(frxUsd.balanceOf(address(wrapper)), 0, "no dust stranded in the wrapper");
+    }
+
+    // ---------------------------------------------------
+    // g2. Quote and collection diverge: the event reports what was taken,
+    //     and an over-collection cannot slip through
+    // ---------------------------------------------------
+
+    /// @dev The hop is an upgradeable proxy; nothing structural forces the fee it
+    ///      pulls to equal the one it quoted. If it pulls less, the difference is
+    ///      refunded and the event must carry the fee actually taken — a consumer
+    ///      reconciling off the event needs the fact, not the step-1 estimate.
+    function test_SendOFTFeeInclusive_EmitsTheFeeActuallyTaken() public {
+        uint256 collected = FEE - 0.5e18;
+        hop.setCollectedFee(collected);
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+
+        vm.expectEmit(true, true, false, true, address(wrapper));
+        emit SendOFTFeeInclusive(address(oft), alice, DST_EID, recipient, address(frxUsd), NET, collected, GROSS);
+
+        vm.prank(alice);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(hop.lastAmountLD(), NET, "bridged the net computed from the quote");
+        assertEq(frxUsd.balanceOf(address(hop)), NET + collected, "hop took net + the fee it actually charged");
+        assertEq(aliceBefore - frxUsd.balanceOf(alice), NET + collected, "caller paid only what was taken");
+        assertEq(frxUsd.balanceOf(address(wrapper)), 0, "the unused fee went back, not stranded");
+    }
+
+    /// @dev After the hop pulls `netAmount`, the allowance left is exactly the quoted
+    ///      fee (dust is zero on a 6/6-decimal OFT). The quote is a hard cap: one unit
+    ///      more and the hop's fee pull fails on allowance, unwinding everything. This
+    ///      is the behaviour the step-5 comment describes; it used to claim the opposite.
+    function test_SendOFTFeeInclusive_RevertsWhenHopCollectsMoreThanQuoted() public {
+        hop.setCollectedFee(FEE + 1);
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.startPrank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TIP20Mock.InsufficientAllowance.selector,
+                address(wrapper),
+                address(hop),
+                FEE + 1,
+                FEE
+            )
+        );
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+        vm.stopPrank();
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "over-collection cannot eat into the budget");
     }
 
     // ---------------------------------------------------

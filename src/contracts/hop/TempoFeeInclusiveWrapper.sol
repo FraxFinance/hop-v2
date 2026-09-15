@@ -131,7 +131,9 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     /// @param sender The caller whose single approval funded the send.
     /// @param feeToken The bridged token the fee was taken from.
     /// @param netAmount The dust-cleaned amount actually bridged.
-    /// @param feeAmount The LayerZero fee deducted from `maxAmountIn`.
+    /// @param feeAmount The fee actually taken by the hop, measured as
+    ///        `maxAmountIn - netAmount - refund` after the send — not the
+    ///        step-1 quote. Today the two are equal by construction.
     /// @param maxAmountIn The gross source-token budget (`fromAmount`).
     event SendOFTFeeInclusive(
         address indexed oft,
@@ -227,20 +229,30 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         uint256 balanceBefore = ITIP20(feeToken).balanceOf(address(this));
         if (!ITIP20(feeToken).transferFrom(msg.sender, address(this), _maxAmountInLD)) revert TransferFailed();
 
-        // 5. Approve the gross budget (the hop pulls `netAmount` to bridge plus
-        //    the fee it re-derives) and send. The allowance is the user's stated
-        //    cap: a fee that drifts above the quote eats into the refund, never
-        //    past `_maxAmountInLD`, and can never shrink the bridged amount below
-        //    the floor checked in step 2.
+        // 5. Approve the gross budget and send. The hop pulls `netAmount` first,
+        //    then the fee it re-derives, so after the first pull the allowance
+        //    left is exactly `_maxAmountInLD - netAmount`: the quoted fee plus
+        //    whatever `removeDust` shaved off (nothing, for a 6/6-decimal OFT).
+        //    The quote is therefore a hard cap, not an estimate — a fee that
+        //    comes out even one unit above it fails the hop's second
+        //    `transferFrom` on allowance and the whole call reverts. It cannot
+        //    be absorbed by the refund, and it can never shrink the bridged
+        //    amount below the floor checked in step 2.
         if (!ITIP20(feeToken).approve(address(HOP), _maxAmountInLD)) revert ApproveFailed();
         HOP.sendOFT(_oft, _dstEid, _recipient, netAmount, _dstGas, _data);
 
-        // 6. Clear the allowance and refund this call's sub-dust remainder.
+        // 6. Clear the allowance and refund this call's remainder. Everything
+        //    the hop did not pull is still here, so the fee actually taken is
+        //    what is missing from the budget once the bridged amount and the
+        //    refund are accounted for — read it back rather than trusting the
+        //    step-1 quote, so the event reports what happened even if a future
+        //    hop implementation priced the fee differently at execution.
         if (!ITIP20(feeToken).approve(address(HOP), 0)) revert ApproveFailed();
         uint256 residual = ITIP20(feeToken).balanceOf(address(this)) - balanceBefore;
         if (residual != 0 && !ITIP20(feeToken).transfer(msg.sender, residual)) revert TransferFailed();
+        uint256 actualFee = _maxAmountInLD - netAmount - residual;
 
-        emit SendOFTFeeInclusive(_oft, msg.sender, _dstEid, _recipient, feeToken, netAmount, feeAmount, _maxAmountInLD);
+        emit SendOFTFeeInclusive(_oft, msg.sender, _dstEid, _recipient, feeToken, netAmount, actualFee, _maxAmountInLD);
     }
 
     /// @notice Off-chain preview of a fee-inclusive send.
