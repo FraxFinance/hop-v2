@@ -216,6 +216,23 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
         wrapper.sendOFTFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, GROSS / 2, DST_GAS, "");
     }
 
+    /// @dev A real-frxUSD balance parked in the wrapper before a send is invisible to
+    ///      that send: not refunded to the caller, not pulled by the hop, left in place.
+    function test_SendOFTFeeInclusive_PreExistingBalanceIsUntouched() public {
+        uint256 donation = 3e6;
+        _mintFrxUsd(address(wrapper), donation);
+        (, , uint256 net) = wrapper.quoteFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, DST_GAS, "");
+        uint256 aliceBefore = ITIP20(FRXUSD).balanceOf(alice);
+
+        vm.prank(alice);
+        ITIP20(FRXUSD).approve(address(wrapper), GROSS);
+        vm.prank(alice);
+        wrapper.sendOFTFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, net, DST_GAS, "");
+
+        assertEq(aliceBefore - ITIP20(FRXUSD).balanceOf(alice), GROSS, "caller paid the budget, no windfall");
+        assertEq(ITIP20(FRXUSD).balanceOf(address(wrapper)), donation, "donation untouched");
+    }
+
     function test_SendOFTFeeInclusive_RevertsBelowMinNet() public {
         (, , uint256 net) = wrapper.quoteFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, DST_GAS, "");
 

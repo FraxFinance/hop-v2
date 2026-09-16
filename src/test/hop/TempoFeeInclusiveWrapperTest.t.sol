@@ -282,7 +282,9 @@ contract TempoFeeInclusiveWrapperTest is Test {
     ///      under test; the floor itself is covered in section f.
     uint256 internal constant ANY_NET = 1;
 
-    /// @dev 18 local decimals against 6 shared decimals — the frxUSD OFT's granularity.
+    /// @dev A synthetic 18-local / 6-shared OFT, to exercise the dust path. This is NOT
+    ///      the deployed Tempo frxUSD OFT, which is 6/6 with `decimalConversionRate == 1`
+    ///      (see `TempoFeeInclusiveWrapperForkTest`); that configuration is `oft` below.
     uint256 internal constant DUST_RATE = 1e12;
 
     TIP20Mock internal frxUsd;
@@ -913,6 +915,10 @@ contract TempoFeeInclusiveWrapperTest is Test {
         hop.setFeeAmount(fee);
 
         uint256 expectedNet = ((gross - fee) / rate) * rate;
+        // Guard the fixture before the call it protects: if the bounds ever stop
+        // producing a bridgeable amount, fail here with the reason, not inside the
+        // send with `NetAmountZero`.
+        assertGt(expectedNet, 0, "the fuzz region must produce a bridgeable amount");
         uint256 aliceBefore = frxUsd.balanceOf(alice);
 
         vm.startPrank(alice);
@@ -922,11 +928,90 @@ contract TempoFeeInclusiveWrapperTest is Test {
 
         uint256 spent = aliceBefore - frxUsd.balanceOf(alice);
 
-        assertGt(expectedNet, 0, "the fuzz region must produce a bridgeable amount");
         assertEq(hop.lastAmountLD(), expectedNet, "bridged the dust-cleaned net");
         assertEq(spent, expectedNet + fee, "caller paid exactly net + fee");
         assertLe(spent, gross, "caller never paid more than the stated budget");
         assertEq(frxUsd.balanceOf(address(wrapper)), 0, "wrapper never retains funds");
         assertEq(frxUsd.allowance(address(wrapper), address(hop)), 0, "wrapper leaves no allowance behind");
+    }
+
+    /// @dev The floor is the caller's only protection against the live fee. Across
+    ///      the same budget / fee / granularity space, any floor strictly above the
+    ///      achievable net must be refused — and refused before any funds move.
+    function testFuzz_SendOFTFeeInclusive_FloorAboveNetAlwaysReverts(
+        uint256 _gross,
+        uint256 _fee,
+        uint8 _rateExponent,
+        uint256 _floorExcess
+    ) public {
+        uint256 rate = 10 ** _bound(uint256(_rateExponent), 0, 12);
+        uint256 gross = _bound(_gross, rate * 2, 1000e18);
+        uint256 fee = _bound(_fee, 0, gross - rate);
+        uint256 net = ((gross - fee) / rate) * rate;
+        assertGt(net, 0, "the fuzz region must produce a bridgeable amount");
+        uint256 floor = net + _bound(_floorExcess, 1, type(uint256).max - net);
+
+        OFTMock fuzzOft = new OFTMock(address(frxUsd), rate);
+        hop.setApprovedOft(address(fuzzOft), true);
+        hop.setFeeAmount(fee);
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.startPrank(alice);
+        frxUsd.approve(address(wrapper), gross);
+        vm.expectRevert(abi.encodeWithSelector(TempoFeeInclusiveWrapper.InsufficientNetAmount.selector, net, floor));
+        wrapper.sendOFTFeeInclusive(address(fuzzOft), DST_EID, recipient, gross, floor, DST_GAS, "");
+        vm.stopPrank();
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "refused before any pull");
+    }
+
+    // ---------------------------------------------------
+    // Donation safety
+    // ---------------------------------------------------
+
+    /// @dev Tokens sitting in the wrapper before a call — sent there by mistake, or
+    ///      by an attacker hoping the next caller's refund picks them up — are
+    ///      excluded from that call's accounting by the `balanceBefore` snapshot.
+    ///      They are neither refunded to the caller nor pulled by the hop; the
+    ///      wrapper has no rescue path, so they simply stay. Both halves matter:
+    ///      the caller cannot be enriched, and the donation cannot distort the send.
+    function test_SendOFTFeeInclusive_PreExistingBalanceIsNeitherRefundedNorDrained() public {
+        uint256 donation = 7e18;
+        frxUsd.mint(address(wrapper), donation);
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+
+        vm.expectEmit(true, true, false, true, address(wrapper));
+        emit SendOFTFeeInclusive(address(oft), alice, DST_EID, recipient, address(frxUsd), NET, FEE, GROSS);
+
+        vm.prank(alice);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(aliceBefore - frxUsd.balanceOf(alice), GROSS, "caller paid exactly the budget, no windfall");
+        assertEq(frxUsd.balanceOf(address(hop)), NET + FEE, "hop took exactly net + fee, not the donation");
+        assertEq(frxUsd.balanceOf(address(wrapper)), donation, "donation untouched and unrecoverable");
+    }
+
+    /// @dev Same property on the dust path, where a refund actually happens: the
+    ///      refund is this call's remainder only, never the pre-existing balance.
+    function test_SendOFTFeeInclusive_RefundExcludesPreExistingBalance() public {
+        uint256 donation = 7e18;
+        frxUsd.mint(address(wrapper), donation);
+        uint256 fee = 1e18 + 123;
+        hop.setFeeAmount(fee);
+        uint256 expectedNet = ((GROSS - fee) / DUST_RATE) * DUST_RATE;
+        uint256 expectedRefund = (GROSS - fee) - expectedNet;
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        frxUsd.approve(address(wrapper), GROSS);
+        vm.prank(alice);
+        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(aliceBefore - frxUsd.balanceOf(alice), GROSS - expectedRefund, "only this call's dust came back");
+        assertEq(frxUsd.balanceOf(address(wrapper)), donation, "the donation stayed put");
     }
 }
