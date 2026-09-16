@@ -124,6 +124,10 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     error FeeExceedsInput(uint256 fee, uint256 maxAmountIn);
     error NetAmountZero();
     error InsufficientNetAmount(uint256 netAmount, uint256 minNetAmount);
+    /// @dev Raised when a token call returns `false`. A TIP20 never does — it
+    ///      returns `true` or reverts, so on Tempo these are unreachable. They
+    ///      guard the `if (!...)` checks below, kept as belt-and-braces for a
+    ///      non-precompile token a hop admin might allow-list in future.
     error TransferFailed();
     error ApproveFailed();
 
@@ -226,6 +230,9 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
 
         // 4. Single pull of the source token for exactly `fromAmount`. Every
         //    precondition the wrapper can check has passed by this point.
+        //    The return-value checks here and below cannot fire for a TIP20
+        //    (it returns `true` or reverts; the deployed hop does not check at
+        //    all). They are cheap insurance, not a code path to rely on.
         uint256 balanceBefore = ITIP20(feeToken).balanceOf(address(this));
         if (!ITIP20(feeToken).transferFrom(msg.sender, address(this), _maxAmountInLD)) revert TransferFailed();
 
