@@ -4,30 +4,15 @@ pragma solidity 0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
+import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
+import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 import { TempoFeeInclusiveWrapper } from "src/contracts/hop/TempoFeeInclusiveWrapper.sol";
+import { SetUserTokenCaller } from "src/test/hop/mocks/TempoFeeInclusiveMocks.sol";
 
-/// @dev TIP20 role lookup uses Tempo's `(account, role)` argument order, not OpenZeppelin's.
+/// @dev TIP20 role lookup uses Tempo's `(account, role)` argument order. The upstream
+///      `ITIP20RolesAuth` declares the mutators only, so this view is declared here.
 interface ITIP20Roles {
     function hasRole(address account, bytes32 role) external view returns (bool);
-}
-
-interface IOFTView {
-    function decimalConversionRate() external view returns (uint256);
-}
-
-/// @dev Admin surface of the deployed hop, used to stage an incident on the fork.
-interface IHopAdmin {
-    function pauseOn() external;
-
-    function setApprovedOft(address _oft, bool _isApproved) external;
-}
-
-/// @dev Stand-in for "any contract" calling the fee manager: `msg.sender` is this contract,
-///      `tx.origin` is whoever sent the transaction — exactly the wrapper's frame.
-contract SetUserTokenCaller {
-    function set(address _token) external {
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_token);
-    }
 }
 
 /// @title TempoFeeInclusiveWrapperForkTest
@@ -118,7 +103,7 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
     /// @dev frxUSD is 6/6 decimals on Tempo, so `removeDust` is the identity: there is no
     ///      sub-dust refund band and every unit of `_maxAmountInLD - fee` is bridged.
     function test_FrxUsdOft_DecimalConversionRateIsOne() public view {
-        assertEq(IOFTView(FRXUSD_OFT).decimalConversionRate(), 1, "frxUSD OFT dust granularity");
+        assertEq(IOFT2(FRXUSD_OFT).decimalConversionRate(), 1, "frxUSD OFT dust granularity");
         assertEq(ITIP20(FRXUSD).decimals(), 6, "frxUSD local decimals");
     }
 
@@ -192,7 +177,7 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
     ///      must reject before pulling, not from inside the hop afterwards.
     function test_HopPaused_QuoteAndSendFailClosed() public {
         vm.prank(HOP_ADMIN);
-        IHopAdmin(REMOTE_HOP_TEMPO).pauseOn();
+        RemoteHopV201Tempo(REMOTE_HOP_TEMPO).pauseOn();
 
         vm.expectRevert(TempoFeeInclusiveWrapper.HopPaused.selector);
         wrapper.quoteFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, DST_GAS, "");
@@ -206,7 +191,7 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
 
     function test_UnapprovedOft_QuoteAndSendFailClosed() public {
         vm.prank(HOP_ADMIN);
-        IHopAdmin(REMOTE_HOP_TEMPO).setApprovedOft(FRXUSD_OFT, false);
+        RemoteHopV201Tempo(REMOTE_HOP_TEMPO).setApprovedOft(FRXUSD_OFT, false);
 
         vm.expectRevert(TempoFeeInclusiveWrapper.InvalidOFT.selector);
         wrapper.quoteFeeInclusive(FRXUSD_OFT, FRAXTAL_EID, recipient, GROSS, DST_GAS, "");
