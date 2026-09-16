@@ -49,13 +49,12 @@ contract InitRemoteHopV2Sei is Script {
         // --- Phase 1: Proxy admin operations (deployer must be proxy admin) ---
 
         // Build initialize calldata
-        address[] memory approvedOfts = new address[](6);
+        address[] memory approvedOfts = new address[](5);
         approvedOfts[0] = frxUsdOft;
         approvedOfts[1] = sfrxUsdOft;
         approvedOfts[2] = frxEthOft;
         approvedOfts[3] = sfrxEthOft;
         approvedOfts[4] = wFraxOft;
-        approvedOfts[5] = fpiOft;
 
         address TREASURY = ISendLibrary(SEND_LIBRARY).treasury();
         console.log("Treasury:", TREASURY);
@@ -91,6 +90,7 @@ contract InitRemoteHopV2Sei is Script {
             30_168,
             hex"0100210100000000000000000000000000030D40000000000000000000000000002DC6C0"
         );
+        remoteHop.setApprovedOft(fpiOft, false);
         console.log("setExecutorOptions: OK");
 
         // 4. Grant PAUSER_ROLE to 7 signers
