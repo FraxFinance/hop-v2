@@ -75,6 +75,23 @@ contract TempoFeeInclusiveWrapperTest is Test {
     }
 
     // ---------------------------------------------------
+    // 0. Construction
+    // ---------------------------------------------------
+
+    /// @dev `HOP` is immutable with no setter; a bad address would surface only on the
+    ///      first send. Refuse it at construction.
+    function test_Constructor_RejectsZeroOrCodelessHop() public {
+        vm.expectRevert(abi.encodeWithSelector(TempoFeeInclusiveWrapper.InvalidHop.selector, address(0)));
+        new TempoFeeInclusiveWrapper(address(0));
+
+        address eoa = makeAddr("not-a-contract");
+        vm.expectRevert(abi.encodeWithSelector(TempoFeeInclusiveWrapper.InvalidHop.selector, eoa));
+        new TempoFeeInclusiveWrapper(eoa);
+
+        assertEq(address(wrapper.HOP()), address(hop), "a contract address is accepted");
+    }
+
+    // ---------------------------------------------------
     // a. Happy path
     // ---------------------------------------------------
 

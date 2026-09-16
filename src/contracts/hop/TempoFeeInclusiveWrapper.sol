@@ -113,6 +113,7 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     /// @notice The deployed Tempo hop this wrapper forwards to.
     IRemoteHopTempo public immutable HOP;
 
+    error InvalidHop(address hop);
     error MsgValueNotZero(uint256 value);
     error ComposeNotSupported();
     /// @dev Same selectors as the hop's own errors, so a decoder built for the
@@ -150,7 +151,11 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         uint256 maxAmountIn
     );
 
+    /// @param _hop The deployed `RemoteHopV201Tempo` proxy. Immutable and unrepointable,
+    ///        so a zero or codeless address is refused here rather than discovered on
+    ///        the first send.
     constructor(address _hop) {
+        if (_hop == address(0) || _hop.code.length == 0) revert InvalidHop(_hop);
         HOP = IRemoteHopTempo(_hop);
     }
 
