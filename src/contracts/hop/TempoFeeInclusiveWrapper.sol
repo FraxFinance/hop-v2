@@ -189,31 +189,25 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         bytes memory _data
     ) external payable nonReentrant {
         if (msg.value != 0) revert MsgValueNotZero(msg.value);
-        if (_data.length != 0) revert ComposeNotSupported();
         if (_maxAmountInLD == 0) revert ZeroAmount();
         // A zero floor would disable the only protection against the live fee
         // eating the budget (see the `_minNetAmountLD` NatSpec). It is also what
         // `quoteFeeInclusive` returns when nothing is bridgeable, so refusing it
         // here turns a mistaken echo of that quote into a revert.
         if (_minNetAmountLD == 0) revert ZeroMinNetAmount();
-        _requireHopAccepts(_oft);
 
-        address feeToken = IOFT(_oft).token();
-
-        // 1. Quote the fee in the bridged token. This reverts fast (before any
-        //    transferFrom) for tokens that cannot source their own LayerZero fee.
-        //    Quoting on the gross budget is safe because the LayerZero fee does
-        //    not vary with the amount: it enters the send only as a fixed-width
-        //    uint64 in the OFT payload, so the quote here equals the fee the hop
-        //    re-derives for `netAmount` below.
-        uint256 feeAmount = HOP.quoteStatic(_oft, _dstEid, _recipient, _maxAmountInLD, _dstGas, _data, feeToken);
+        // 1-2. Fee and net, from the same derivation `quoteFeeInclusive` serves.
+        //      The send is stricter about the answer: where the quote reports
+        //      "nothing bridgeable" as zero, the send refuses.
+        (address feeToken, uint256 feeAmount, uint256 netAmount) = _previewFeeInclusive(
+            _oft,
+            _dstEid,
+            _recipient,
+            _maxAmountInLD,
+            _dstGas,
+            _data
+        );
         if (feeAmount >= _maxAmountInLD) revert FeeExceedsInput(feeAmount, _maxAmountInLD);
-
-        // 2. Dust-clean the remainder up front so the amount checked, bridged and
-        //    emitted are the same number. Without this, a remainder below the
-        //    OFT's decimalConversionRate would be silently floored to zero by the
-        //    hop, charging the full fee to deliver nothing.
-        uint256 netAmount = HOP.removeDust(_oft, _maxAmountInLD - feeAmount);
         if (netAmount == 0) revert NetAmountZero();
         if (netAmount < _minNetAmountLD) revert InsufficientNetAmount(netAmount, _minNetAmountLD);
 
@@ -279,8 +273,34 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         uint128 _dstGas,
         bytes memory _data
     ) external view returns (address feeToken, uint256 feeAmount, uint256 netAmount) {
-        // Same input contract as the send: a quote for a call the send would
-        // reject — bad shape, paused hop, unlisted OFT — would be misleading.
+        return _previewFeeInclusive(_oft, _dstEid, _recipient, _maxAmountInLD, _dstGas, _data);
+    }
+
+    /// @dev The single derivation behind both entrypoints, so a floor an
+    ///      integrator takes from the quote is by construction the number the
+    ///      send checks it against — the two cannot drift apart.
+    ///
+    ///      Admission first (same input contract for quote and send: a quote for
+    ///      a call the send would reject would be misleading), then:
+    ///        - Fee in the bridged token via `hop.quoteStatic`. Reverts fast for
+    ///          tokens that cannot source their own LayerZero fee. Quoting on the
+    ///          gross budget is safe because the LayerZero fee does not vary with
+    ///          the amount: it enters the send only as a fixed-width uint64 in the
+    ///          OFT payload, so this equals the fee the hop re-derives for `net`.
+    ///        - Net, dust-cleaned up front so the amount checked, bridged and
+    ///          emitted are one number. Without this, a remainder below the OFT's
+    ///          decimalConversionRate would be silently floored to zero by the
+    ///          hop, charging the full fee to deliver nothing.
+    ///      Reports "nothing bridgeable" (fee >= budget) as `netAmount == 0`
+    ///      rather than reverting; the send turns that into `FeeExceedsInput`.
+    function _previewFeeInclusive(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _maxAmountInLD,
+        uint128 _dstGas,
+        bytes memory _data
+    ) internal view returns (address feeToken, uint256 feeAmount, uint256 netAmount) {
         if (_data.length != 0) revert ComposeNotSupported();
         _requireHopAccepts(_oft);
         feeToken = IOFT(_oft).token();
