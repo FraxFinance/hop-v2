@@ -27,6 +27,12 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
         _disableInitializers();
     }
 
+    /// @notice Set the slippage allowance applied to a DEX-routed fee swap, in basis points.
+    /// @param _bps Allowance in bps, capped by MAX_FEE_SWAP_SLIPPAGE_BPS. 0 restores the default.
+    function setFeeSwapSlippageBps(uint16 _bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setFeeSwapSlippageBps(_bps);
+    }
+
     /// @notice Send an OFT to a destination with encoded data
     /// @dev Inlines base HopV2.sendOFT logic to:
     ///      1. Reject native ETH (Tempo uses ERC20 gas via EndpointV2Alt)

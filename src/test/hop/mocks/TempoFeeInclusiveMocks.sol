@@ -6,52 +6,11 @@ import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { StdTokens } from "tempo-std/StdTokens.sol";
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
-import { MockERC20 } from "src/test/hop/mocks/MockERC20.sol";
 
 /// @notice Test doubles for `TempoFeeInclusiveWrapper`.
 /// @dev Shared by the fork-free unit suite (which etches `TipFeeManagerMock` at the
 ///      precompile address) and the mainnet-fork suite (which only needs
-///      `SetUserTokenCaller`).
-
-/// @notice Bool-returning TIP20 stand-in.
-/// @dev A real TIP20 reverts on insufficient allowance/balance (it never returns
-///      `false`), and so does the OpenZeppelin base here. The `*ReturnsFalse`
-///      switches exist purely to drive the wrapper's explicit `if (!...) revert`
-///      branches, which a reverting token can never reach.
-contract TIP20Mock is MockERC20 {
-    bool public transferReturnsFalse;
-    bool public transferFromReturnsFalse;
-    bool public approveReturnsFalse;
-
-    constructor(string memory _name, string memory _symbol) MockERC20(_name, _symbol, 18) {}
-
-    function setTransferReturnsFalse(bool _value) external {
-        transferReturnsFalse = _value;
-    }
-
-    function setTransferFromReturnsFalse(bool _value) external {
-        transferFromReturnsFalse = _value;
-    }
-
-    function setApproveReturnsFalse(bool _value) external {
-        approveReturnsFalse = _value;
-    }
-
-    function approve(address _spender, uint256 _amount) public override returns (bool) {
-        if (approveReturnsFalse) return false;
-        return super.approve(_spender, _amount);
-    }
-
-    function transfer(address _to, uint256 _amount) public override returns (bool) {
-        if (transferReturnsFalse) return false;
-        return super.transfer(_to, _amount);
-    }
-
-    function transferFrom(address _from, address _to, uint256 _amount) public override returns (bool) {
-        if (transferFromReturnsFalse) return false;
-        return super.transferFrom(_from, _to, _amount);
-    }
-}
+///      `SetUserTokenCaller`). The bridged token is the plain `MockERC20`.
 
 /// @notice OFT (adapter) stand-in exposing only what the wrapper and hop read.
 contract OFTMock {

@@ -16,10 +16,11 @@ import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 // stays put; only the implementation behind it changes.
 //
 // After this upgrade the proxy delegates to `RemoteHopV201Tempo` (inherits
-// `HopV201Tempo`), which mirrors `HopV201`'s recover surface — `RECOVER_ROLE`
-// + `recoverERC20` — and drops both the unbounded `recover(address,uint256,bytes)`
-// from `HopV2` and the `recoverETH` from `HopV201` (Tempo settles fees in
-// TIP20 via EndpointV2Alt; there is no native ETH surface to recover).
+// `HopV201Tempo`), which keeps `HopV201`'s DEFAULT_ADMIN_ROLE-gated `recoverERC20`
+// and drops both the unbounded `recover(address,uint256,bytes)` from `HopV2` and
+// the RECOVER_ETH_ROLE-gated `recoverETH` from `HopV201` (Tempo settles fees in
+// TIP20 via EndpointV2Alt; there is no native ETH surface to recover, so the
+// Tempo `recoverETH` reverts `NotImplemented`).
 // Storage layout is unchanged because both versions share the same ERC-7201 slot.
 //
 // Generates the Safe batch JSON at:

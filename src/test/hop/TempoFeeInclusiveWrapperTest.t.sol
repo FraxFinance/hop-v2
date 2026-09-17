@@ -5,7 +5,8 @@ import { Test } from "forge-std/Test.sol";
 import { IERC20Errors } from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { TempoFeeInclusiveWrapper } from "src/contracts/hop/TempoFeeInclusiveWrapper.sol";
-import { TIP20Mock, OFTMock, RemoteHopFeeInclusiveMock, TipFeeManagerMock } from "src/test/hop/mocks/TempoFeeInclusiveMocks.sol";
+import { MockERC20 } from "src/test/hop/mocks/MockERC20.sol";
+import { OFTMock, RemoteHopFeeInclusiveMock, TipFeeManagerMock } from "src/test/hop/mocks/TempoFeeInclusiveMocks.sol";
 
 // ====================================================================
 // |                              Tests                               |
@@ -44,7 +45,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
     ///      (see `TempoFeeInclusiveWrapperForkTest`); that configuration is `oft` below.
     uint256 internal constant DUST_RATE = 1e12;
 
-    TIP20Mock internal frxUsd;
+    MockERC20 internal frxUsd;
     OFTMock internal oft;
     OFTMock internal dustOft;
     RemoteHopFeeInclusiveMock internal hop;
@@ -58,7 +59,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
         alice = makeAddr("alice");
         recipient = bytes32(uint256(uint160(alice)));
 
-        frxUsd = new TIP20Mock("Frax USD", "frxUSD");
+        frxUsd = new MockERC20("Frax USD", "frxUSD", 18);
         oft = new OFTMock(address(frxUsd), 1);
         dustOft = new OFTMock(address(frxUsd), DUST_RATE);
         hop = new RemoteHopFeeInclusiveMock();
@@ -495,7 +496,7 @@ contract TempoFeeInclusiveWrapperTest is Test {
     }
 
     function test_SendOFTFeeInclusive_SetsUserTokenWhenBoundToAnotherToken() public {
-        TIP20Mock other = new TIP20Mock("Other", "OTHER");
+        MockERC20 other = new MockERC20("Other", "OTHER", 18);
         vm.prank(address(wrapper));
         feeManager.setUserToken(address(other));
         assertEq(feeManager.setUserTokenCalls(address(wrapper)), 1, "seeded with a different token");
@@ -615,49 +616,6 @@ contract TempoFeeInclusiveWrapperTest is Test {
         assertEq(frxUsd.allowance(alice, address(wrapper)), GROSS, "the caller's approval is untouched");
         assertEq(frxUsd.allowance(address(wrapper), address(hop)), 0, "no dangling allowance to the hop");
         assertEq(feeManager.setUserTokenCalls(address(wrapper)), 0, "the precompile write rolled back too");
-    }
-
-    // ---------------------------------------------------
-    // Bool-returning token failures
-    // ---------------------------------------------------
-
-    function test_SendOFTFeeInclusive_RevertsTransferFailedWhenPullReturnsFalse() public {
-        frxUsd.setTransferFromReturnsFalse(true);
-
-        vm.startPrank(alice);
-        vm.expectRevert(TempoFeeInclusiveWrapper.TransferFailed.selector);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
-        vm.stopPrank();
-
-        assertEq(hop.sendCount(), 0, "nothing was sent");
-    }
-
-    function test_SendOFTFeeInclusive_RevertsApproveFailedWhenApproveReturnsFalse() public {
-        vm.prank(alice);
-        frxUsd.approve(address(wrapper), GROSS);
-
-        frxUsd.setApproveReturnsFalse(true);
-
-        vm.prank(alice);
-        vm.expectRevert(TempoFeeInclusiveWrapper.ApproveFailed.selector);
-        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
-
-        assertEq(hop.sendCount(), 0, "nothing was sent");
-    }
-
-    function test_SendOFTFeeInclusive_RevertsTransferFailedWhenRefundReturnsFalse() public {
-        hop.setFeeAmount(1e18 + 123); // leaves a sub-dust refund
-
-        vm.prank(alice);
-        frxUsd.approve(address(wrapper), GROSS);
-
-        frxUsd.setTransferReturnsFalse(true);
-
-        vm.prank(alice);
-        vm.expectRevert(TempoFeeInclusiveWrapper.TransferFailed.selector);
-        wrapper.sendOFTFeeInclusive(address(dustOft), DST_EID, recipient, GROSS, ANY_NET, DST_GAS, "");
-
-        assertEq(frxUsd.balanceOf(address(wrapper)), 0, "the failed refund unwound the whole call");
     }
 
     // ---------------------------------------------------

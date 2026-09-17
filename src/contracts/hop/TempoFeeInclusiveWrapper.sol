@@ -2,9 +2,10 @@
 pragma solidity ^0.8.0;
 
 import { IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
-import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
-import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 
 /// @dev Minimal view of the *already deployed* `RemoteHopV201Tempo`
 ///      (`0x0000006D38568b00B457580b734e0076C62de659`). Only the members the
@@ -21,6 +22,9 @@ interface IRemoteHopTempo {
     ) external payable;
 
     /// @notice Simulated LayerZero fee for a send, denominated in `_userToken`.
+    ///         When the fee must be swapped, the figure carries the hop's swap
+    ///         headroom: it is the most the hop will debit, and the hop refunds
+    ///         what the swap does not consume in the same call.
     /// @dev Reverts (`NoSwappableWhitelistedToken`) when `_userToken` can neither
     ///      pay the EndpointV2Alt fee directly nor be swapped to a whitelisted
     ///      stablecoin — this is what makes the wrapper fee-token aware.
@@ -91,7 +95,12 @@ interface IRemoteHopTempo {
 ///           4. Pull exactly `fromAmount` of the bridged token from the caller.
 ///           5. Call the deployed `hop.sendOFT` with the net amount; the hop
 ///              pulls `net` (bridge) + `fee` (fee) — both from the wrapper.
-///           6. Refund any sub-dust remainder to the caller.
+///              On the DEX-routed fee path the quoted fee carries swap
+///              headroom: the hop debits that figure and hands back what the
+///              swap did not consume, so the wrapper holds a refund by the
+///              time the hop returns.
+///           6. Refund this call's remainder — the sub-dust slice plus any
+///              headroom the hop handed back — to the caller.
 ///
 ///         Scope: the bridged token must satisfy two independent checks.
 ///           - Step 1: its LayerZero fee can be settled in a whitelisted
@@ -125,12 +134,6 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     error FeeExceedsInput(uint256 fee, uint256 maxAmountIn);
     error NetAmountZero();
     error InsufficientNetAmount(uint256 netAmount, uint256 minNetAmount);
-    /// @dev Raised when a token call returns `false`. A TIP20 never does — it
-    ///      returns `true` or reverts, so on Tempo these are unreachable. They
-    ///      guard the `if (!...)` checks below, kept as belt-and-braces for a
-    ///      non-precompile token a hop admin might allow-list in future.
-    error TransferFailed();
-    error ApproveFailed();
 
     /// @param oft The OFT (adapter) bridged.
     /// @param sender The caller whose single approval funded the send.
@@ -138,7 +141,10 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     /// @param netAmount The dust-cleaned amount actually bridged.
     /// @param feeAmount The fee actually taken by the hop, measured as
     ///        `maxAmountIn - netAmount - refund` after the send — not the
-    ///        step-1 quote. Today the two are equal by construction.
+    ///        step-1 quote. Equal to the quote when the fee token is collected
+    ///        1:1 (whitelisted by the endpoint dollar); at most the quote on
+    ///        the DEX-routed path, where the hop refunds its unspent swap
+    ///        headroom.
     /// @param maxAmountIn The gross source-token budget (`fromAmount`).
     event SendOFTFeeInclusive(
         address indexed oft,
@@ -229,33 +235,33 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
 
         // 4. Single pull of the source token for exactly `fromAmount`. Every
         //    precondition the wrapper can check has passed by this point.
-        //    The return-value checks here and below cannot fire for a TIP20
-        //    (it returns `true` or reverts; the deployed hop does not check at
-        //    all). They are cheap insurance, not a code path to rely on.
-        uint256 balanceBefore = ITIP20(feeToken).balanceOf(address(this));
-        if (!ITIP20(feeToken).transferFrom(msg.sender, address(this), _maxAmountInLD)) revert TransferFailed();
+        //    Token calls go through SafeERC20, as in the mint-redeem hops: a
+        //    TIP20 returns `true` or reverts, so on Tempo this is parity rather
+        //    than protection, but it keeps one convention across Frax's hops.
+        uint256 balanceBefore = IERC20(feeToken).balanceOf(address(this));
+        SafeERC20.safeTransferFrom(IERC20(feeToken), msg.sender, address(this), _maxAmountInLD);
 
         // 5. Approve the gross budget and send. The hop pulls `netAmount` first,
         //    then the fee it re-derives, so after the first pull the allowance
-        //    left is exactly `_maxAmountInLD - netAmount`: the quoted fee plus
-        //    whatever `removeDust` shaved off (nothing, for a 6/6-decimal OFT).
-        //    The quote is therefore a hard cap, not an estimate — a fee that
-        //    comes out even one unit above it fails the hop's second
-        //    `transferFrom` on allowance and the whole call reverts. It cannot
-        //    be absorbed by the refund, and it can never shrink the bridged
-        //    amount below the floor checked in step 2.
-        if (!ITIP20(feeToken).approve(address(HOP), _maxAmountInLD)) revert ApproveFailed();
+        //    left is exactly `_maxAmountInLD - netAmount`: the quoted fee (swap
+        //    headroom included on the DEX-routed path) plus whatever `removeDust`
+        //    shaved off (nothing, for a 6/6-decimal OFT). The quote is therefore
+        //    a hard cap, not an estimate — a debit that comes out even one unit
+        //    above it fails the hop's second `transferFrom` on allowance and the
+        //    whole call reverts. It cannot be absorbed by the refund, and it can
+        //    never shrink the bridged amount below the floor checked in step 2.
+        SafeERC20.forceApprove(IERC20(feeToken), address(HOP), _maxAmountInLD);
         HOP.sendOFT(_oft, _dstEid, _recipient, netAmount, _dstGas, _data);
 
         // 6. Clear the allowance and refund this call's remainder. Everything
-        //    the hop did not pull is still here, so the fee actually taken is
-        //    what is missing from the budget once the bridged amount and the
-        //    refund are accounted for — read it back rather than trusting the
-        //    step-1 quote, so the event reports what happened even if a future
-        //    hop implementation priced the fee differently at execution.
-        if (!ITIP20(feeToken).approve(address(HOP), 0)) revert ApproveFailed();
-        uint256 residual = ITIP20(feeToken).balanceOf(address(this)) - balanceBefore;
-        if (residual != 0 && !ITIP20(feeToken).transfer(msg.sender, residual)) revert TransferFailed();
+        //    the hop did not pull is still here, and so is whatever it handed
+        //    back (unspent swap headroom on the DEX-routed path), so the fee
+        //    actually taken is what is missing from the budget once the bridged
+        //    amount and the refund are accounted for — read it back rather than
+        //    trusting the step-1 quote, so the event reports what happened.
+        SafeERC20.forceApprove(IERC20(feeToken), address(HOP), 0);
+        uint256 residual = IERC20(feeToken).balanceOf(address(this)) - balanceBefore;
+        if (residual != 0) SafeERC20.safeTransfer(IERC20(feeToken), msg.sender, residual);
         uint256 actualFee = _maxAmountInLD - netAmount - residual;
 
         emit SendOFTFeeInclusive(_oft, msg.sender, _dstEid, _recipient, feeToken, netAmount, actualFee, _maxAmountInLD);
@@ -263,7 +269,10 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
 
     /// @notice Off-chain preview of a fee-inclusive send.
     /// @return feeToken The bridged token the fee is taken from.
-    /// @return feeAmount The LayerZero fee (in `feeToken`) deducted from `fromAmount`.
+    /// @return feeAmount The most the hop will debit for the LayerZero fee, in
+    ///         `feeToken`. On the DEX-routed path this carries the hop's swap
+    ///         headroom and the unspent part is refunded in the same call, so
+    ///         the fee actually taken can be lower (see `SendOFTFeeInclusive`).
     /// @return netAmount The dust-cleaned amount that will be bridged at the
     ///         current fee. Zero means nothing is bridgeable at this budget (fee
     ///         >= `_maxAmountInLD`): do not send, and never pass it through as

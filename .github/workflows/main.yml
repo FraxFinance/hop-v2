@@ -34,7 +34,7 @@ jobs:
       - run: forge build
       - run: >-
           forge test --no-match-path
-          'src/test/{SimulateEthereumDefaultAdminRole.t.sol,hop/RemoteHopV2TempoForkTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/TempoFeeInclusiveWrapperForkTest.t.sol,hop/ThreeChainHopTest.t.sol,vault/RemoteVaultDepositTest.t.sol}'
+          'src/test/{SimulateEthereumDefaultAdminRole.t.sol,hop/RemoteHopV2TempoForkTest.t.sol,hop/RemoteHopV2TempoRealOFTIntegration.t.sol,hop/RemoteHopV201TempoRealOFTIntegration.t.sol,hop/TempoFeeInclusiveWrapperForkTest.t.sol,hop/ThreeChainHopTest.t.sol,vault/RemoteVaultDepositTest.t.sol}'
       - run: >-
           FOUNDRY_PROFILE=testbuild forge test --match-path
           'src/test/vault/RemoteVaultDepositTest.t.sol'
@@ -44,3 +44,9 @@ jobs:
       - run: >-
           forge test --network tempo --match-path
           'src/test/hop/TempoFeeInclusiveWrapperForkTest.t.sol'
+      # Production Tempo hops (V2 and the deployed V201) against the real Tempo OFTs and the local TIP20 /
+      # StablecoinDEX / FeeManager precompiles, no RPC needed. Carries the fee-swap headroom regression
+      # (DEX quote-vs-fill divergence), so it must run on every change to TempoGasTokenBase.
+      - run: >-
+          forge test --network tempo --match-path
+          'src/test/hop/RemoteHopV2*TempoRealOFTIntegration.t.sol'
