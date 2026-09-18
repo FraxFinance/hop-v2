@@ -51,7 +51,6 @@
     "forge-std": "github:foundry-rs/forge-std#60acb7aaadcce2d68e52986a0a66fe79f07d138f",
     "frax-standard-solidity": "github:FraxFinance/frax-standard-solidity#v1.1.2",
     "solidity-bytes-utils": "github:GNSPS/solidity-bytes-utils",
-    "tempo": "github:tempoxyz/tempo#v1.0.2",
     "tempoxyz/tempo-std": "github:tempoxyz/tempo-std",
     "viem": "^2.46.3"
   }
