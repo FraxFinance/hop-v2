@@ -29,7 +29,6 @@ abstract contract SetExecutorOptionsBase is BaseScript {
         address DEFAULT_HOP = 0x0000006D38568b00B457580b734e0076C62de659;
 
         _addHop("Arbitrum", 30_110, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
-        _addHop("Aurora", 30_211, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
         _addHop("Avalanche", 30_106, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
         _addHop("Berachain", 30_362, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
         _addHop("BSC", 30_102, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);

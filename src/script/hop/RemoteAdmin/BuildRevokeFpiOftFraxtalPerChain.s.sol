@@ -60,7 +60,6 @@ contract BuildRevokeFpiOftFraxtalPerChain is Script, HopConstants {
         fpiOfts[98_866] = deterministicFpiOft; // Plume
         fpiOfts[534_352] = 0x93cDc5d29293Cb6983f059Fec6e4FFEb656b6a62; // Scroll
         fpiOfts[747_474] = deterministicFpiOft; // Katana
-        fpiOfts[1_313_161_554] = deterministicFpiOft; // Aurora
     }
 
     function run() external {
