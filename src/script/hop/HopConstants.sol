@@ -61,7 +61,6 @@ contract HopConstants {
         _addHopV2Target(57_073, "Ink", defaultHop);
         _addHopV2Target(59_144, "Linea", defaultHop);
         _addHopV2Target(747_474, "Katana", defaultHop);
-        _addHopV2Target(1_313_161_554, "Aurora", defaultHop);
 
         address commonRemoteAdmin = 0x954286118E93df807aB6f99aE0454f8710f0a8B9;
         _addRemoteAdminRoute(56, 30_102, commonRemoteAdmin); // BSC
@@ -72,7 +71,6 @@ contract HopConstants {
         _addRemoteAdminRoute(143, 30_390, 0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55); // Monad
         _addRemoteAdminRoute(59_144, 30_183, 0xfa803b63DaACCa6CD953061BDBa4E3da6b177447); // Linea
         _addRemoteAdminRoute(8453, 30_184, 0x07dB789aD17573e5169eDEfe14df91CC305715AA); // Base
-        _addRemoteAdminRoute(1_313_161_554, 30_211, commonRemoteAdmin); // Aurora
         _addRemoteAdminRoute(196, 30_274, commonRemoteAdmin); // X-Layer
         _addRemoteAdminRoute(1329, 30_280, commonRemoteAdmin); // Sei
         _addRemoteAdminRoute(480, 30_319, commonRemoteAdmin); // Worldchain

@@ -111,13 +111,6 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://arb1.arbitrum.io/rpc", "https://arbitrum-one-rpc.publicnode.com"],
   },
   {
-    name: "Aurora",
-    chainId: 1_313_161_554,
-    eid: 30_211,
-    executor: "0xa2b402ffe8dd7460a8b425644b6b9f50667f0a61",
-    rpcs: ["https://mainnet.aurora.dev", "https://1rpc.io/aurora"],
-  },
-  {
     name: "Avalanche",
     chainId: 43_114,
     eid: 30_106,

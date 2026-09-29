@@ -1,0 +1,17 @@
+{
+  "version": "1.0",
+  "chainId": 252,
+  "createdAt": 1790558943468,
+  "meta": {
+    "name": "Transactions Batch",
+    "description": "setRemoteHop: close deprecated Aurora (30211) eid"
+  },
+  "transactions": [
+    {
+      "to": "0x00000000e18aFc20Afe54d4B2C8688bB60c06B36",
+      "value": "0",
+      "operation": 0,
+      "data": "0xaa662ee300000000000000000000000000000000000000000000000000000000000076030000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
