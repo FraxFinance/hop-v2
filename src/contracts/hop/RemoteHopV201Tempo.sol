@@ -76,6 +76,13 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         // EndpointV2Alt uses TIP20 for gas, not native ETH
         if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
 
+        // Reject a recipient that truncates to the zero address: the send would be
+        // accepted here and then burn or strand the tokens on the destination, where
+        // only an admin could recover them. Checked on the narrowed address so a
+        // bytes32 with non-zero upper bits is caught too, and before any token is
+        // pulled so the caller keeps their funds.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
+
         // --- Inlined from HopV201Tempo.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();

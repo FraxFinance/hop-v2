@@ -129,6 +129,7 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     ///      hop reads the wrapper's pre-checks identically.
     error HopPaused();
     error InvalidOFT();
+    error ZeroRecipient();
     error ZeroAmount();
     error ZeroMinNetAmount();
     error FeeExceedsInput(uint256 fee, uint256 maxAmountIn);
@@ -170,7 +171,9 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
     ///         for exactly `_maxAmountInLD` and `msg.value == 0`.
     /// @param _oft The approved OFT (adapter) to bridge.
     /// @param _dstEid Destination LayerZero EID.
-    /// @param _recipient Destination recipient (bytes32).
+    /// @param _recipient Destination recipient (bytes32). Must not truncate to the zero
+    ///        address: the hop would accept it and the tokens would be burned or
+    ///        stranded on the destination.
     /// @param _maxAmountInLD Gross source-token budget = `fromAmount`. The sum of
     ///        bridged amount and fee is capped at this value.
     /// @param _minNetAmountLD Minimum amount that must actually be bridged after
@@ -316,6 +319,10 @@ contract TempoFeeInclusiveWrapper is ReentrancyGuard {
         bytes memory _data
     ) internal view returns (address feeToken, uint256 feeAmount, uint256 netAmount) {
         if (_data.length != 0) revert ComposeNotSupported();
+        // A recipient that truncates to the zero address is refused here, so the quote
+        // and the send agree and neither reaches the hop. Narrowed before the check so a
+        // bytes32 with non-zero upper bits is caught too.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         _requireHopAccepts(_oft);
         feeToken = IOFT(_oft).token();
         feeAmount = HOP.quoteStatic(_oft, _dstEid, _recipient, _maxAmountInLD, _dstGas, _data, feeToken);

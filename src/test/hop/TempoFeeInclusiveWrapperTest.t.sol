@@ -232,6 +232,43 @@ contract TempoFeeInclusiveWrapperTest is Test {
     }
 
     // ---------------------------------------------------
+    // c4. A recipient that narrows to the zero address is refused
+    // ---------------------------------------------------
+
+    /// @dev The hop would accept it and the destination would burn or strand the
+    ///      transfer. Proven to run before any pull: alice grants no allowance, so a
+    ///      pull-first ordering would surface the token's allowance error instead.
+    function test_SendOFTFeeInclusive_RevertsOnZeroRecipient() public {
+        uint256 aliceBefore = frxUsd.balanceOf(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.ZeroRecipient.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, bytes32(0), GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+        assertEq(frxUsd.balanceOf(alice), aliceBefore, "no funds moved");
+    }
+
+    /// @dev Upper bits are irrelevant: every consumer narrows with uint160.
+    function test_SendOFTFeeInclusive_RevertsOnRecipientWithDirtyUpperBits() public {
+        bytes32 dirty = bytes32(uint256(type(uint96).max) << 160);
+        assertEq(address(uint160(uint256(dirty))), address(0), "narrows to zero");
+
+        vm.prank(alice);
+        vm.expectRevert(TempoFeeInclusiveWrapper.ZeroRecipient.selector);
+        wrapper.sendOFTFeeInclusive(address(oft), DST_EID, dirty, GROSS, ANY_NET, DST_GAS, "");
+
+        assertEq(hop.sendCount(), 0, "nothing was sent");
+    }
+
+    /// @dev The quote fails closed on the same input, so an integrator is never handed
+    ///      numbers for a send that would revert.
+    function test_QuoteFeeInclusive_RevertsOnZeroRecipient() public {
+        vm.expectRevert(TempoFeeInclusiveWrapper.ZeroRecipient.selector);
+        wrapper.quoteFeeInclusive(address(oft), DST_EID, bytes32(0), GROSS, DST_GAS, "");
+    }
+
+    // ---------------------------------------------------
     // d. Zero gross budget
     // ---------------------------------------------------
 

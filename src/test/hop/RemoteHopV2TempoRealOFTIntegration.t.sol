@@ -480,6 +480,33 @@ contract RemoteHopV2TempoRealOFTIntegration is TestHelperOz5, TempoTestHelpers {
         _setUserGasToken(alice, StdTokens.PATH_USD_ADDRESS);
     }
 
+    /// @dev A recipient that narrows to address(0) is refused at the source on every
+    ///      destination shape - direct to the hub, multi-hop, and local - before the
+    ///      bridged token is pulled. Without the guard the direct and multi-hop sends are
+    ///      accepted and the transfer is burned or stranded on the destination.
+    function test_Tempo_SendOFT_RejectsZeroRecipient() public {
+        bytes32[2] memory bad = [bytes32(0), bytes32(uint256(type(uint96).max) << 160)];
+        uint32[3] memory dsts = [FRAXTAL_EID, CHAIN_A_EID, TEMPO_EID];
+
+        vm.startPrank(alice);
+        IERC20(address(tempoFrxUsdToken)).approve(address(remoteHopTempo), type(uint256).max);
+        IERC20(StdTokens.PATH_USD_ADDRESS).approve(address(remoteHopTempo), type(uint256).max);
+        uint256 frxUsdBefore = tempoFrxUsdToken.balanceOf(alice);
+        uint256 pathUsdBefore = StdTokens.PATH_USD.balanceOf(alice);
+
+        for (uint256 i; i < bad.length; ++i) {
+            assertEq(address(uint160(uint256(bad[i]))), address(0), "fixture narrows to zero");
+            for (uint256 j; j < dsts.length; ++j) {
+                vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+                remoteHopTempo.sendOFT(address(tempoFrxUsdAdapter), dsts[j], bad[i], 10e6, 400_000, "");
+            }
+        }
+        vm.stopPrank();
+
+        assertEq(tempoFrxUsdToken.balanceOf(alice), frxUsdBefore, "no bridged token pulled");
+        assertEq(StdTokens.PATH_USD.balanceOf(alice), pathUsdBefore, "no fee token pulled");
+    }
+
     // ───────────────────────── fee-swap headroom (quote-vs-fill divergence fix) ─────────────────────────
 
     /// @dev DEX-routed quotes include the slippage allowance so a UI approving the quoted figure never under-approves;
