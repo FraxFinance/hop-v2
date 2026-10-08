@@ -93,7 +93,7 @@ Hop V2 is a cross-chain token bridging protocol built on [LayerZero V2](https://
               │                                                       │
               │        ╔═════════════════╗                            │
               │        ║  BASE           ║                            │
-              │        ║  EID 30_102     ║                            │
+              │        ║  EID 30_184     ║                            │
               │        ║                 ║                            │
               │        ║ RemoteHopV2     ║                            │
               │        ║ + RemoteAdmin   ║◄───────────────────────────┘
@@ -108,7 +108,7 @@ Hop V2 is a cross-chain token bridging protocol built on [LayerZero V2](https://
 
 ```
 remoteHop[30_110] → RemoteHopV2 on Arbitrum
-remoteHop[30_102] → RemoteHopV2 on Base
+remoteHop[30_184] → RemoteHopV2 on Base
 remoteHop[30_101] → RemoteHopV2 on Ethereum
 
 remoteHop[30_255] (Fraxtal EID) on each RemoteHopV2 → FraxtalHopV2
@@ -121,7 +121,7 @@ remoteHop[30_255] (Fraxtal EID) on each RemoteHopV2 → FraxtalHopV2
 User on Base wants to send frxUSD to an address on Fraxtal.
 
 ```
-  BASE (EID 30_102)                           FRAXTAL (EID 30_255)
+  BASE (EID 30_184)                           FRAXTAL (EID 30_255)
   ─────────────────                           ──────────────────────
 
   User                                        recipient
@@ -161,7 +161,7 @@ User on Base wants to send frxUSD to an address on Fraxtal.
 User on Arbitrum sends frxUSD to an address on Base. All traffic relays through Fraxtal.
 
 ```
-  ARBITRUM (30_110)         FRAXTAL (30_255)          BASE (30_102)
+  ARBITRUM (30_110)         FRAXTAL (30_255)          BASE (30_184)
   ─────────────────         ─────────────────         ─────────────
 
   User
@@ -169,7 +169,7 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │ 1. approve(RemoteHopV2_ARB, amt)
    │ 2. sendOFT(
    │      oft=frxUSD_ARB,
-   │      dstEid=30_102,              ←── Base EID
+   │      dstEid=30_184,              ←── Base EID
    │      recipient=0xBASE_USER,
    │      amount=1000e18
    │    ) {value: lzFee + hopFee}
@@ -182,7 +182,7 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │  gas    = max(400_000, 1_000_000)
    │  composeMsg = abi.encode(HopMessage{
    │    srcEid: 30_110,
-   │    dstEid: 30_102,       ← original destination
+   │    dstEid: 30_184,       ← original destination
    │    dstGas: 0,
    │    sender: 0xARB_USER,
    │    recipient: 0xBASE_USER,
@@ -200,16 +200,16 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │                          │    isTrusted: remoteHop[30_110] == sender ✓
    │                          │
    │                          │ 2. decode HopMessage
-   │                          │    hopMessage.dstEid = 30_102 (Base)
+   │                          │    hopMessage.dstEid = 30_184 (Base)
    │                          │
    │                          │ 3. dstEid != FRAXTAL_EID
    │                          │    → _sendToDestination()
    │                          │
    │                          │ 4. _generateSendParam():
-   │                          │    dstEid = 30_102
+   │                          │    dstEid = 30_184
    │                          │    to     = RemoteHopV2_BASE
    │                          │    composeMsg = abi.encode(HopMessage{
-   │                          │      dstEid: 30_102,
+   │                          │      dstEid: 30_184,
    │                          │      recipient: 0xBASE_USER,
    │                          │      data: ""     ← no compose
    │                          │    })
@@ -229,10 +229,10 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │                          │             ▼
    │                          │            BASE_USER receives frxUSD
    │                          ▼
-   │                    emit Hop(oft, 30_110, 30_102, recipient, amount)
+   │                    emit Hop(oft, 30_110, 30_184, recipient, amount)
    ▼
 
-  Total Fee = LZ(ARB→FRAX) + quoteHop(30_102) + Hop service fee
+  Total Fee = LZ(ARB→FRAX) + quoteHop(30_184) + Hop service fee
 ```
 
 ---
@@ -242,7 +242,7 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
 User on Fraxtal sends to a remote chain directly from `FraxtalHopV2`.
 
 ```
-  FRAXTAL (30_255)                              BASE (30_102)
+  FRAXTAL (30_255)                              BASE (30_184)
   ────────────────                              ─────────────
 
   User (on Fraxtal)
@@ -250,7 +250,7 @@ User on Fraxtal sends to a remote chain directly from `FraxtalHopV2`.
    │ 1. approve(FraxtalHopV2, amount)
    │ 2. FraxtalHopV2.sendOFT(
    │      oft=frxUSD,
-   │      dstEid=30_102,
+   │      dstEid=30_184,
    │      recipient=0xBASE_USER,
    │      amount=1000e18
    │    ) {value: fee}
@@ -258,14 +258,14 @@ User on Fraxtal sends to a remote chain directly from `FraxtalHopV2`.
    ▼
   FraxtalHopV2
    │ sendOFT() override:
-   │   validate: remoteHop[30_102] != 0 ✓
+   │   validate: remoteHop[30_184] != 0 ✓
    │
    │ super.sendOFT():
    │   dstEid != localEid(30_255)
    │   → _sendToDestination()
    │
    │ _generateSendParam():
-   │   dstEid = 30_102
+   │   dstEid = 30_184
    │   to     = 0xBASE_USER  (no compose data)
    │   (direct delivery, no composeMsg)
    │
@@ -1102,7 +1102,7 @@ if (msg.value > sendFee) {
 // Chain IDs (LayerZero EIDs)
 uint32 constant FRAXTAL_EID  = 30_255;
 uint32 constant ARBITRUM_EID = 30_110;
-uint32 constant BASE_EID     = 30_102;
+uint32 constant BASE_EID     = 30_184;
 uint32 constant ETHEREUM_EID = 30_101;
 
 // Deployed addresses
@@ -1464,7 +1464,7 @@ const remoteHop = new ethers.Contract(
 );
 
 const frxUSD_ARB = "0x...";  // frxUSD OFT on Arbitrum
-const BASE_EID   = 30_102;
+const BASE_EID   = 30_184;
 const recipient  = ethers.zeroPadValue("0xRecipientAddress", 32);
 const amount     = ethers.parseEther("1000");  // 1000 frxUSD
 
@@ -1507,16 +1507,13 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | Chain | `Hop` | `RemoteAdmin` |
 | --- | --- | --- |
 | Arbitrum | [`0x0000006D38568b00B457580b734e0076C62de659`](https://arbiscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://arbiscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
-| Aurora | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.aurora.dev/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.aurora.dev/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Avalanche | [`0x0000006D38568b00B457580b734e0076C62de659`](https://routescan.io/address/0x0000006D38568b00B457580b734e0076C62de659/contract/43114/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://routescan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/43114/code) |
 | Base | [`0x0000006D38568b00B457580b734e0076C62de659`](https://basescan.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x07dB789aD17573e5169eDEfe14df91CC305715AA`](https://basescan.org/address/0x07dB789aD17573e5169eDEfe14df91CC305715AA) |
-| Berachain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://berascan.com/address/0x0000006D38568b00B457580b734e0076C62de659/contract/43114/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://berascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/43114/code) |
-| BSC | [`0x0000006D38568b00B457580b734e0076C62de659`](https://bscscan.com/address/0x0000006D38568b00B457580b734e0076C62de659/contract/43114/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://bscscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/43114/code) |
+| BSC | [`0x0000006D38568b00B457580b734e0076C62de659`](https://bscscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://bscscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Ethereum | [`0x0000006D38568b00B457580b734e0076C62de659`](https://etherscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa`](https://etherscan.io/address/0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa) |
 | Hyperliquid | [`0x0000006D38568b00B457580b734e0076C62de659`](https://hyperevmscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://hyperevmscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Ink | [`0x0000006D38568b00B457580b734e0076C62de659`](https://routescan.io/address/0x0000006D38568b00B457580b734e0076C62de659/contract/57073/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://routescan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/57073/code) |
 | Katana | [`0x0000006D38568b00B457580b734e0076C62de659`](https://katanascan.com/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://katanascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
-| Mode | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.mode.network/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.mode.network/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Monad | [`0x0000006D38568b00B457580b734e0076C62de659`](https://monadscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55`](https://monadscan.com/address/0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55) |
 | Optimism | [`0x0000006D38568b00B457580b734e0076C62de659`](https://optimistic.etherscan.io/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://optimistic.etherscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Polygon | [`0x0000006D38568b00B457580b734e0076C62de659`](https://polygonscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://polygonscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
@@ -1529,12 +1526,23 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | X-Layer | [`0x0000006D38568b00B457580b734e0076C62de659`](https://oklink.com/x-layer/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://oklink.com/x-layer/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Abstract | [`0x0000006D38568b00B457580b734e0076C62de659`](https://abscan.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://abscan.org/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
 | Linea | [`0x0000006D38568b00B457580b734e0076C62de659`](https://lineascan.build/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xfa803b63DaACCa6CD953061BDBa4E3da6b177447`](https://lineascan.build/address/0xfa803b63DaACCa6CD953061BDBa4E3da6b177447) |
-| Scroll | [`0x0000006D38568b00B457580b734e0076C62de659`](https://scrollscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01`](https://scrollscan.com/address/0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01) |
 | ZkSync | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.zksync.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://explorer.zksync.io/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
 | Fraxtal | [`0x00000000e18aFc20Afe54d4B2C8688bB60c06B36`](https://fraxscan.com/address/0x00000000e18aFc20Afe54d4B2C8688bB60c06B36) | [`0x34029e02821178B4387e12644896994f910D6E73`](https://fraxscan.com/address/0x34029e02821178B4387e12644896994f910D6E73) |
 | Somnia | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.somnia.network/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://explorer.somnia.network/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
 | Tempo | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explore.tempo.xyz/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f`](https://explore.tempo.xyz/address/0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f) |
 | Robinhood | [`0x0000006D38568b00B457580b734e0076C62de659`](https://robinhoodchain.blockscout.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://robinhoodchain.blockscout.com/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
+
+### Deprecated Chains
+
+These chains are no longer connected to the mesh. `FraxtalHopV2.remoteHop(eid)` is unset for them and the Fraxtal OFTs no longer peer them, so Hop transfers to or from them are not delivered. The contracts remain deployed; do not use them.
+
+| Chain | `Hop` | `RemoteAdmin` |
+| --- | --- | --- |
+| Aurora | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.aurora.dev/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.aurora.dev/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Berachain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://berascan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://berascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Mode | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.mode.network/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.mode.network/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
+| Scroll | [`0x0000006D38568b00B457580b734e0076C62de659`](https://scrollscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01`](https://scrollscan.com/address/0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01) |
+
 ---
 
 ## 9. Integration Checklist
