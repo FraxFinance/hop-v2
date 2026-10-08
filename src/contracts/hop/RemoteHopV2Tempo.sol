@@ -23,8 +23,18 @@ import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 /// @notice Tempo chain variant of RemoteHopV2 that uses ERC20 for gas payment via EndpointV2Alt
 /// @author Frax Finance: https://github.com/FraxFinance
 contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
+    /// @dev Declared here rather than in `HopV2`: `HopV2`'s bytecode seeds the proxy's
+    ///      CREATE2 address on every chain and must stay frozen (see `DeployRemoteHopV2`).
+    error ZeroRecipient();
+
     constructor(address _endpoint) TempoGasTokenBase(_endpoint) {
         _disableInitializers();
+    }
+
+    /// @notice Set the slippage allowance applied to a DEX-routed fee swap, in basis points.
+    /// @param _bps Allowance in bps, capped by MAX_FEE_SWAP_SLIPPAGE_BPS. 0 restores the default.
+    function setFeeSwapSlippageBps(uint16 _bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setFeeSwapSlippageBps(_bps);
     }
 
     /// @notice Send an OFT to a destination with encoded data
@@ -41,6 +51,13 @@ contract RemoteHopV2Tempo is RemoteHopV2, TempoGasTokenBase {
     ) public payable override {
         // EndpointV2Alt uses ERC20 for gas, not native ETH
         if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
+
+        // Reject a recipient that truncates to the zero address: the send would be
+        // accepted here and then burn or strand the tokens on the destination, where
+        // only an admin could recover them. Checked on the narrowed address so a
+        // bytes32 with non-zero upper bits is caught too, and before any token is
+        // pulled so the caller keeps their funds.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
 
         // --- Inlined from HopV2.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
