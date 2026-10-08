@@ -86,7 +86,7 @@ abstract contract DeployRemoteHopV2 is Script, HopConstants {
         // grant Pauser roles to msig signers
         bytes32 PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
 
-        // RECOVER_ETH_ROLE goes to the chain msig only, matching every live spoke
+        // RECOVER_ETH_ROLE goes to the chain msig and thomas, matching every live spoke
         bytes32 RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
 
         // sam
@@ -102,8 +102,9 @@ abstract contract DeployRemoteHopV2 is Script, HopConstants {
         // dennis
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0xC6EF452b0de9E95Ccb153c2A5A7a90154aab3419);
 
-        // grant Recover role to the msig and transfer admin role to msig & RemoteAdmin, then renounce from deployer
+        // grant Recover role to the msig & thomas and transfer admin role to msig & RemoteAdmin, then renounce from deployer
         RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, msig);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x381e2495e683868F693AA5B1414F712f21d34b40);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), msig);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), remoteAdmin);
         RemoteHopV2(payable(remoteHop)).renounceRole(bytes32(0), msg.sender);
