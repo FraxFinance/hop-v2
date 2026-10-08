@@ -25,6 +25,15 @@ contract HopConstants {
     ///        Tempo                  ~327k   - only 18% margin under 400k
     ///        ZkSync / Abstract      ~390k   - EraVM metering, effectively no margin under 400k
     ///        Somnia               ~1_470k   - 400k would run out of gas
+    ///      Calls that write a fresh storage slot cost far more where SSTORE (or EraVM pubdata) is
+    ///      repriced. A grantRole, measured the same way on 2026-10-07:
+    ///        EVM-equivalent chains  ~161k   (Polygon ~202k, Monad ~251k)
+    ///        Sei                    ~381k
+    ///        ZkSync / Abstract      ~755k   - pubdata-priced, moves with L1 gas
+    ///        Somnia               ~2_594k   (eth_estimateGas; capped eth_call passes at ~1_950k)
+    ///      Every override keeps at least 2x headroom over the costliest of these. Extra compose gas
+    ///      barely moves the quote (+0.4% to +17% on 2026-10-07), while running out strands the
+    ///      compose until someone re-executes it with more gas.
     mapping(uint256 chainId => uint128 composeGas) internal composeGasOverrides;
 
     mapping(uint256 chainId => HopV2Target target) internal hopV2Targets;
@@ -88,10 +97,13 @@ contract HopConstants {
         _addRemoteAdminRoute(4663, 30_416, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Robinhood
         _addRemoteAdminRoute(5031, 30_380, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Somnia
 
-        composeGasOverrides[324] = 1_500_000; // ZkSync
-        composeGasOverrides[2741] = 1_500_000; // Abstract
+        composeGasOverrides[137] = 500_000; // Polygon
+        composeGasOverrides[143] = 600_000; // Monad
+        composeGasOverrides[324] = 2_500_000; // ZkSync
+        composeGasOverrides[1329] = 800_000; // Sei
+        composeGasOverrides[2741] = 2_500_000; // Abstract
         composeGasOverrides[4217] = 2_500_000; // Tempo
-        composeGasOverrides[5031] = 3_000_000; // Somnia
+        composeGasOverrides[5031] = 6_000_000; // Somnia
     }
 
     /// @notice Compose gas to forward to `chainId` for a RemoteAdmin hop
