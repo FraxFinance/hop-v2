@@ -41,115 +41,153 @@ contract BuildGrantRecoverEthRoleFraxtalPerChain is Script, HopConstants, SafeTx
     /// @dev keccak256("RECOVER_ETH_ROLE")
     bytes32 public constant RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
 
-    function run() external {
-        address account = _account();
-        string memory accountLabel = _accountLabel(account);
-        string memory outputDir = _outputDir();
-        vm.createDir(outputDir, true);
+    /// @dev Per-run settings, bundled so the per-route helpers stay within the legacy (non via-IR)
+    ///      stack limit - CI's `testbuild` profile compiles every script without via-IR.
+    struct GrantConfig {
+        string accountLabel;
+        string outputDir;
+        uint256 feeBufferBps;
+        uint256 feeMinHeadroom;
+        bytes remoteCall;
+    }
 
-        uint256 feeBufferBps = _feeBufferBps();
-        console.log("Account:", account);
-        uint256 feeMinHeadroom = _feeMinHeadroom();
-        console.log("Fee buffer (bps):", feeBufferBps);
-        console.log("Fee min headroom (wei):", feeMinHeadroom);
-
-        bytes memory remoteCall = abi.encodeCall(IAccessControl.grantRole, (RECOVER_ETH_ROLE, account));
-        RemoteAdminRoute[] storage routes = _remoteAdminRoutes();
+    struct GrantTotals {
         uint256 totalFee;
         uint256 maxFee;
         uint256 written;
         uint256 skipped;
+    }
 
+    function run() external {
+        address account = _account();
+        GrantConfig memory cfg = GrantConfig({
+            accountLabel: _accountLabel(account),
+            outputDir: _outputDir(),
+            feeBufferBps: _feeBufferBps(),
+            feeMinHeadroom: _feeMinHeadroom(),
+            remoteCall: abi.encodeCall(IAccessControl.grantRole, (RECOVER_ETH_ROLE, account))
+        });
+        vm.createDir(cfg.outputDir, true);
+
+        console.log("Account:", account);
+        console.log("Fee buffer (bps):", cfg.feeBufferBps);
+        console.log("Fee min headroom (wei):", cfg.feeMinHeadroom);
+
+        RemoteAdminRoute[] storage routes = _remoteAdminRoutes();
+        GrantTotals memory totals;
         for (uint256 i = 0; i < routes.length; i++) {
-            RemoteAdminRoute memory route = routes[i];
-            HopV2Target storage target = _hopV2TargetFor(route.chainId);
-            address remoteAdmin = _remoteAdminForEid(route.eid);
+            _processRoute(routes[i], cfg, totals);
+        }
 
-            if (route.chainId == TEMPO_CHAIN_ID) {
-                console.log("SKIPPED (HopV201Tempo has no recoverETH):", target.name);
-                skipped++;
-                continue;
-            }
+        console.log("Routes total:", routes.length);
+        console.log("Batches written:", totals.written);
+        console.log("Routes skipped:", totals.skipped);
+        console.log("Total FRAX attached across all batches (wei):", totals.totalFee);
+        // HopV2._handleMsgValue refunds the unspent buffer to the msig inside each tx, so the
+        // msig only needs the largest single value on hand, not the total.
+        console.log("Largest single batch value (wei):", totals.maxFee);
 
-            bytes memory composeData = abi.encode(target.hop, remoteCall);
+        if (_includeFraxtal()) _writeFraxtalLocal(account, cfg.accountLabel, cfg.outputDir);
+    }
 
-            // Gas the destination compose runs with. Chains with non-EVM gas metering need more
-            // than the 400k default - see composeGasOverrides in HopConstants.
-            uint128 composeGas = _composeGasFor(route.chainId);
+    function _processRoute(RemoteAdminRoute memory route, GrantConfig memory cfg, GrantTotals memory totals) internal {
+        HopV2Target storage target = _hopV2TargetFor(route.chainId);
+        address remoteAdmin = _remoteAdminForEid(route.eid);
 
-            // Routes whose LZ send config has been torn down (deprecated chains) revert here
-            // with LZ_NotImplemented(). Skip them rather than aborting the whole run - a batch
-            // for such a chain could never be delivered anyway.
-            uint256 fee;
-            try
-                IHopV2(FRAXTAL_HOP).quote({
-                    _oft: FRXUSD_LOCKBOX,
-                    _dstEid: route.eid,
-                    _recipient: bytes32(uint256(uint160(remoteAdmin))),
-                    _amountLD: 0,
-                    _dstGas: composeGas,
-                    _data: composeData
-                })
-            returns (uint256 quoted) {
-                fee = quoted;
-            } catch {
-                console.log("SKIPPED (quote reverted, route unreachable):", target.name);
-                skipped++;
-                continue;
-            }
+        if (route.chainId == TEMPO_CHAIN_ID) {
+            console.log("SKIPPED (HopV201Tempo has no recoverETH):", target.name);
+            totals.skipped++;
+            return;
+        }
 
-            uint256 scaledFee = (fee * feeBufferBps) / 10_000;
-            fee = scaledFee > fee + feeMinHeadroom ? scaledFee : fee + feeMinHeadroom;
-            totalFee += fee;
-            if (fee > maxFee) maxFee = fee;
-            written++;
+        bytes memory composeData = abi.encode(target.hop, cfg.remoteCall);
 
-            bytes memory localCall = abi.encodeWithSignature(
+        // Gas the destination compose runs with. Chains with non-EVM gas metering need more
+        // than the 400k default - see composeGasOverrides in HopConstants.
+        uint128 composeGas = _composeGasFor(route.chainId);
+
+        (bool reachable, uint256 fee) = _quoteFee(route.eid, remoteAdmin, composeGas, composeData, cfg);
+        if (!reachable) {
+            console.log("SKIPPED (quote reverted, route unreachable):", target.name);
+            totals.skipped++;
+            return;
+        }
+
+        totals.totalFee += fee;
+        if (fee > totals.maxFee) totals.maxFee = fee;
+        totals.written++;
+
+        _writeRouteBatch(target.name, route.eid, remoteAdmin, composeGas, composeData, fee, cfg);
+    }
+
+    /// @dev Routes whose LZ send config has been torn down (deprecated chains) revert in `quote`
+    ///      with LZ_NotImplemented(). Report them as unreachable rather than aborting the whole
+    ///      run - a batch for such a chain could never be delivered anyway.
+    function _quoteFee(
+        uint32 eid,
+        address remoteAdmin,
+        uint128 composeGas,
+        bytes memory composeData,
+        GrantConfig memory cfg
+    ) internal view returns (bool reachable, uint256 fee) {
+        try
+            IHopV2(FRAXTAL_HOP).quote({
+                _oft: FRXUSD_LOCKBOX,
+                _dstEid: eid,
+                _recipient: bytes32(uint256(uint160(remoteAdmin))),
+                _amountLD: 0,
+                _dstGas: composeGas,
+                _data: composeData
+            })
+        returns (uint256 quoted) {
+            uint256 scaledFee = (quoted * cfg.feeBufferBps) / 10_000;
+            fee = scaledFee > quoted + cfg.feeMinHeadroom ? scaledFee : quoted + cfg.feeMinHeadroom;
+            reachable = true;
+        } catch {}
+    }
+
+    function _writeRouteBatch(
+        string memory chainName,
+        uint32 eid,
+        address remoteAdmin,
+        uint128 composeGas,
+        bytes memory composeData,
+        uint256 fee,
+        GrantConfig memory cfg
+    ) internal {
+        SafeTx[] memory txs = new SafeTx[](1);
+        txs[0] = SafeTx({
+            name: string.concat("Grant RECOVER_ETH_ROLE to ", cfg.accountLabel, " on ", chainName),
+            to: FRAXTAL_HOP,
+            value: fee,
+            data: abi.encodeWithSignature(
                 "sendOFT(address,uint32,bytes32,uint256,uint128,bytes)",
                 FRXUSD_LOCKBOX,
-                route.eid,
+                eid,
                 bytes32(uint256(uint160(remoteAdmin))),
                 uint256(0),
                 composeGas,
                 composeData
-            );
+            )
+        });
 
-            SafeTx[] memory txs = new SafeTx[](1);
-            txs[0] = SafeTx({
-                name: string.concat("Grant RECOVER_ETH_ROLE to ", accountLabel, " on ", target.name),
-                to: FRAXTAL_HOP,
-                value: fee,
-                data: localCall
-            });
+        string memory filename = string(
+            abi.encodePacked(
+                cfg.outputDir,
+                "/",
+                vm.toString(uint256(FRAXTAL_EID)),
+                "-",
+                vm.toString(uint256(eid)),
+                "(",
+                chainName,
+                ").json"
+            )
+        );
 
-            string memory filename = string(
-                abi.encodePacked(
-                    outputDir,
-                    "/",
-                    vm.toString(uint256(FRAXTAL_EID)),
-                    "-",
-                    vm.toString(uint256(route.eid)),
-                    "(",
-                    target.name,
-                    ").json"
-                )
-            );
-
-            writeTxs(txs, filename);
-            console.log("Wrote:", filename);
-            console.log("  composeGas:", composeGas);
-            console.log("  fee (wei):", fee);
-        }
-
-        console.log("Routes total:", routes.length);
-        console.log("Batches written:", written);
-        console.log("Routes skipped:", skipped);
-        console.log("Total FRAX attached across all batches (wei):", totalFee);
-        // HopV2._handleMsgValue refunds the unspent buffer to the msig inside each tx, so the
-        // msig only needs the largest single value on hand, not the total.
-        console.log("Largest single batch value (wei):", maxFee);
-
-        if (_includeFraxtal()) _writeFraxtalLocal(account, accountLabel, outputDir);
+        writeTxs(txs, filename);
+        console.log("Wrote:", filename);
+        console.log("  composeGas:", composeGas);
+        console.log("  fee (wei):", fee);
     }
 
     /// @notice Fraxtal's own hub hop is not reachable via RemoteAdmin - the role is granted by a

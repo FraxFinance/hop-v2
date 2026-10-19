@@ -22,6 +22,13 @@ contract RevokeFpiOftDeliveryTest is Test {
     function _assertRevokeLands(string memory rpc, address remoteAdmin, address hop, address fpiOft) internal {
         vm.createSelectFork(rpc);
 
+        // The live revoke campaign has since executed, so at the latest block FPI is already
+        // unapproved. Re-approve it in the fork - as RemoteAdmin, which holds DEFAULT_ADMIN_ROLE
+        // on the hop - so the payload is still exercised against a hop in its pre-revoke state.
+        if (!IHopV2(hop).approvedOft(fpiOft)) {
+            vm.prank(remoteAdmin);
+            IHopV2(hop).setApprovedOft(fpiOft, true);
+        }
         assertTrue(IHopV2(hop).approvedOft(fpiOft), "FPI not approved before");
 
         IRemoteAdmin admin = IRemoteAdmin(remoteAdmin);
