@@ -42,7 +42,6 @@ abstract contract SetExecutorOptionsBase is BaseScript {
         _addHop("Unichain", 30_320, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
         _addHop("Worldchain", 30_319, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
         _addHop("X-Layer", 30_274, DEFAULT_HOP, 0x954286118E93df807aB6f99aE0454f8710f0a8B9);
-        _addHop("Abstract", 30_324, DEFAULT_HOP, 0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb);
         _addHop("Base", 30_184, DEFAULT_HOP, 0x07dB789aD17573e5169eDEfe14df91CC305715AA);
         _addHop("Ethereum", 30_101, DEFAULT_HOP, 0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa);
         _addHop("Linea", 30_183, DEFAULT_HOP, 0xfa803b63DaACCa6CD953061BDBa4E3da6b177447);

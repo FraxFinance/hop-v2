@@ -97,13 +97,6 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://ethereum-rpc.publicnode.com", "https://1rpc.io/eth"],
   },
   {
-    name: "Abstract",
-    chainId: 2741,
-    eid: 30_324,
-    executor: "0x643e1471f37c4680df30cf0c540cd379a0ff58a5",
-    rpcs: ["https://api.mainnet.abs.xyz", "https://abstract.drpc.org"],
-  },
-  {
     name: "Arbitrum",
     chainId: 42_161,
     eid: 30_110,
