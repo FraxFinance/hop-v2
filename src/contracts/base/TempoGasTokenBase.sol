@@ -168,6 +168,11 @@ abstract contract TempoGasTokenBase {
     ///      On the DEX path the caller is debited `quoteUserTokenFee` (quote plus headroom); whatever the
     ///      swap does not consume is refunded in the same call, so the net debit is at most that figure.
     function _collectNativeAltToken(uint256 _nativeFee) internal returns (address paymentToken) {
+        return _collectNativeAltToken(_nativeFee, msg.sender);
+    }
+
+    /// @dev As above, with the unspent part of a padded pull returned to `_refundTo` instead of the payer.
+    function _collectNativeAltToken(uint256 _nativeFee, address _refundTo) internal returns (address paymentToken) {
         if (_nativeFee == 0) return _resolveUserToken();
 
         address userToken = _resolveUserToken();
@@ -196,7 +201,7 @@ abstract contract TempoGasTokenBase {
         // The DEX pulls tokenIn without consuming the allowance, so clear it rather than leave it dangling.
         ITIP20(userToken).approve(address(StdPrecompiles.STABLECOIN_DEX), 0);
         if (maxAmountIn > spentAmountIn) {
-            ITIP20(userToken).transfer(msg.sender, maxAmountIn - spentAmountIn);
+            ITIP20(userToken).transfer(_refundTo, maxAmountIn - spentAmountIn);
         }
 
         return targetToken;

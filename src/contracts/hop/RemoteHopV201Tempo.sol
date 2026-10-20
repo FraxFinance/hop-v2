@@ -11,6 +11,7 @@ import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 import { HopV201Tempo } from "src/contracts/hop/HopV201Tempo.sol";
 import { HopMessage } from "src/contracts/interfaces/IHopV201.sol";
 import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
+import { HopActions } from "src/contracts/libraries/HopActions.sol";
 
 // ====================================================================
 // |     ______                   _______                             |
@@ -61,17 +62,20 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         _setFeeSwapSlippageBps(_bps);
     }
 
-    /// @notice Send an OFT to a destination with encoded data
+    /// @notice Send an OFT to a destination with encoded data and an explicit refund address. The six- and
+    ///         four-argument forms in `HopV201Tempo` route here with `msg.sender` as the refund address.
     /// @dev Inlines base HopV201Tempo.sendOFT logic to:
     ///      1. Reject native ETH (Tempo uses TIP20 gas via EndpointV2Alt)
-    ///      2. Skip _handleMsgValue (no native ETH fee handling on Tempo)
+    ///      2. Skip _handleMsgValue (no native ETH fee handling on Tempo); the only refund on Tempo is the
+    ///         unspent part of a padded TIP20 pull, which `_collectNativeAltToken` returns to `_refundTo`
     function sendOFT(
         address _oft,
         uint32 _dstEid,
         bytes32 _recipient,
         uint256 _amountLD,
         uint128 _dstGas,
-        bytes memory _data
+        bytes memory _data,
+        address _refundTo
     ) public payable override {
         // EndpointV2Alt uses TIP20 for gas, not native ETH
         if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
@@ -82,31 +86,25 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         // bytes32 with non-zero upper bits is caught too, and before any token is
         // pulled so the caller keeps their funds.
         if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
+        if (_refundTo == address(0)) revert ZeroRefundAddress();
 
         // --- Inlined from HopV201Tempo.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();
         if (!$.approvedOft[_oft]) revert InvalidOFT();
 
-        // generate hop message
-        HopMessage memory hopMessage = HopMessage({
-            srcEid: $.localEid,
-            dstEid: _dstEid,
-            dstGas: _dstGas,
-            sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _recipient,
-            data: _data
-        });
+        // generate hop message (built in a helper so the seven-argument frame stays within the legacy stack limit)
+        HopMessage memory hopMessage = _buildHopMessage(_dstEid, _recipient, _dstGas, _data);
 
         // Transfer the OFT token to the hop. Clean off dust for the sender that would otherwise be lost through LZ.
         _amountLD = removeDust(_oft, _amountLD);
         if (_amountLD > 0) ITIP20(IOFT(_oft).token()).transferFrom(msg.sender, address(this), _amountLD);
 
-        if (_dstEid == $.localEid) {
-            // Sending from src => src - no LZ send needed
+        if (_dstEid == $.localEid && !HopActions.isMintRedeem(_data)) {
+            // Sending from src => src - no LZ send needed; a tagged action travels via Fraxtal
             _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
         } else {
-            _sendToDestination(_oft, _amountLD, true, hopMessage);
+            _sendToDestinationTempo(_oft, _amountLD, hopMessage, _refundTo);
         }
 
         // No _handleMsgValue: Tempo bypasses native msg.value fee handling.
@@ -151,7 +149,7 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         bytes memory _data
     ) internal view returns (uint256) {
         uint32 localEid_ = localEid();
-        if (_dstEid == localEid_) return 0;
+        if (_dstEid == localEid_ && !HopActions.isMintRedeem(_data)) return 0;
 
         HopMessage memory hopMessage = HopMessage({
             srcEid: localEid_,
@@ -183,6 +181,16 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         /*_isTrustedHopMessage*/
         HopMessage memory _hopMessage
     ) internal override returns (uint256) {
+        return _sendToDestinationTempo(_oft, _amountLD, _hopMessage, msg.sender);
+    }
+
+    /// @dev The Tempo send path, with the unspent part of a padded fee pull returned to `_refundTo`.
+    function _sendToDestinationTempo(
+        address _oft,
+        uint256 _amountLD,
+        HopMessage memory _hopMessage,
+        address _refundTo
+    ) internal returns (uint256) {
         HopV2Storage storage $ = _getHopV2Storage();
 
         // Generate sendParam (always targets Fraxtal hub)
@@ -201,17 +209,28 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
 
         // Collect the total fee once, then bind the contract to the resulting payment token so the
         // downstream OFT `_payNative()` path can consume it without performing a second swap.
-        address paymentToken = _collectNativeAltToken(fee.nativeFee + hopFeeOnFraxtal);
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(paymentToken);
-        _approveOftFee(_oft, paymentToken, _amountLD, fee.nativeFee);
-
-        // Retain hop-fee revenue on this contract as the collected payment token.
+        // The hop-fee revenue stays on this contract as the collected payment token.
+        _payFee(_oft, _amountLD, fee.nativeFee, hopFeeOnFraxtal, _refundTo);
 
         // Send the OFT to Fraxtal hub
         IOFT(_oft).send{ value: 0 }(sendParam, fee, address(this));
 
         // Return 0 — native msg.value fee handling is bypassed on Tempo.
         return 0;
+    }
+
+    /// @dev Collects `_nativeFee + _retained` in one TIP20 pull (headroom back to `_refundTo`), binds the fee manager
+    ///      to that token and sets the OFT approvals. Separate from the send path to keep each frame small.
+    function _payFee(
+        address _oft,
+        uint256 _amountLD,
+        uint256 _nativeFee,
+        uint256 _retained,
+        address _refundTo
+    ) internal {
+        address paymentToken = _collectNativeAltToken(_nativeFee + _retained, _refundTo);
+        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(paymentToken);
+        _approveOftFee(_oft, paymentToken, _amountLD, _nativeFee);
     }
 
     /// @dev Sets the approvals needed for the OFT to debit the bridged amount and consume its fee from the collected payment token.
@@ -241,16 +260,19 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
             sendParam.to = _hopMessage.recipient;
         } else {
             sendParam.to = remoteHop(FRAXTAL_EID);
-
-            bytes memory options = OptionsBuilder.newOptions();
-            if (_hopMessage.dstGas < 400_000) _hopMessage.dstGas = 400_000;
-            uint128 fraxtalGas = 1_000_000;
-            if (_hopMessage.dstGas > fraxtalGas && _hopMessage.dstEid == FRAXTAL_EID) fraxtalGas = _hopMessage.dstGas;
-            options = OptionsBuilder.addExecutorLzComposeOption(options, 0, fraxtalGas, 0);
-            sendParam.extraOptions = options;
-
+            sendParam.extraOptions = _composeOptions(_hopMessage);
             sendParam.composeMsg = abi.encode(_hopMessage);
         }
+    }
+
+    /// @dev Executor options for the compose on Fraxtal. Normalises `dstGas` in place, as the base does.
+    function _composeOptions(HopMessage memory _hopMessage) internal pure returns (bytes memory) {
+        if (_hopMessage.dstGas < 400_000) _hopMessage.dstGas = 400_000;
+        uint128 fraxtalGas = 1_000_000;
+        // A hub action runs the mint-redeemer and a lockbox send inside the compose; book the budget for it.
+        if (HopActions.isMintRedeem(_hopMessage.data)) fraxtalGas = HopActions.HUB_GAS_MINT_REDEEM;
+        if (_hopMessage.dstGas > fraxtalGas && _hopMessage.dstEid == FRAXTAL_EID) fraxtalGas = _hopMessage.dstGas;
+        return OptionsBuilder.addExecutorLzComposeOption(OptionsBuilder.newOptions(), 0, fraxtalGas, 0);
     }
 
     /// @notice Handles incoming composed messages from LayerZero.

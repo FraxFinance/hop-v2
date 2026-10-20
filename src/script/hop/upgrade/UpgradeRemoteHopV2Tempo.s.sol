@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.23;
 
-import { UpgradeHopV2 } from "src/script/hop/upgrade/UpgradeHopV2.s.sol";
+import { UpgradeHopV2 } from "src/script/hop/upgrade/UpgradeHopV2.sol";
 import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 
 // ====================================================================
