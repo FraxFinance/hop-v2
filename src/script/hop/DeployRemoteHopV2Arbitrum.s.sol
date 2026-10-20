@@ -12,6 +12,7 @@ contract DeployRemoteHopV2Arbitrum is DeployRemoteHopV2 {
 
         proxyAdmin = 0x223a681fc5c5522c85C96157c0efA18cd6c5405c;
         endpoint = 0x1a44076050125825900e736c501f859c50fE728c;
+        gasPriceOracle = 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612;
         localEid = 30_110;
 
         msig = 0x3da490b19F300E7cb2280426C8aD536dB2df445c;

@@ -12,6 +12,7 @@ contract DeployRemoteHopV2Ethereum is DeployRemoteHopV2 {
 
         proxyAdmin = 0x223a681fc5c5522c85C96157c0efA18cd6c5405c;
         endpoint = 0x1a44076050125825900e736c501f859c50fE728c;
+        gasPriceOracle = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419;
         localEid = 30_101;
 
         msig = 0x6cCF3F2Ca29591F90ADB403D67E4dcB49cEcC634;

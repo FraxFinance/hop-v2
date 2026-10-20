@@ -43,6 +43,7 @@ abstract contract DeployRemoteHopV2 is Script, HopConstants {
 
     address proxyAdmin;
     address endpoint;
+    address gasPriceOracle;
     uint32 localEid;
 
     address EXECUTOR;
