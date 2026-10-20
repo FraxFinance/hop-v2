@@ -4,6 +4,20 @@ import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/Script.sol";
 import { RemoteHopV2 } from "src/contracts/hop/RemoteHopV2.sol";
 import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
+import { Vm } from "forge-std/Vm.sol";
+
+interface IVersioned {
+    function version() external view returns (string memory);
+}
+
+/// @dev An address with code is not enough to upgrade a proxy to; it must be a Hop 2.1.0 implementation.
+function assertHopV201(address _impl) view {
+    require(_impl.code.length != 0, "REMOTE_HOP_V201_IMPL has no code");
+    require(
+        keccak256(bytes(IVersioned(_impl).version())) == keccak256("2.1.0"),
+        "REMOTE_HOP_V201_IMPL is not Hop 2.1.0"
+    );
+}
 import { RemoteAdmin } from "src/contracts/RemoteAdmin.sol";
 import { IHopV201 } from "src/contracts/interfaces/IHopV201.sol";
 import { HopConstants, HopV2Target } from "src/script/hop/HopConstants.sol";
@@ -241,18 +255,14 @@ function deployRemoteHopV2(
     }(hopV2, 0x54F9b12743A7DeeC0ea48721683cbebedC6E17bC, "");
     if (!isTest) require(address(proxy) == 0x0000006D38568b00B457580b734e0076C62de659, "Proxy address mismatch");
 
-    // deploy v201 implementation and upgrade the proxy to the new imp
-    // @dev the canonical V201 address was minted with the default profile (optimizer_runs = 200,
-    //      see UpgradeRemoteHopV2.s.sol) while this script compiles under FOUNDRY_PROFILE=deploy
-    //      for the V2/proxy salts, so on a live chain V201 is pre-deployed by
-    //      DeployRemoteHopV201.s.sol and picked up here; the fresh deploy below only runs in tests.
-    address hopV201 = 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd;
-    if (hopV201.code.length == 0) {
-        hopV201 = address(
-            new RemoteHopV201{ salt: bytes32(0x4e59b44847b379578588920ca78fbf26c0b4956ce6ac70492feaa59e63000008) }()
-        );
-        if (!isTest) require(hopV201 == 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd, "hopV201 address mismatch");
-    }
+    // upgrade the proxy to the V201 implementation
+    // @dev Hop 2.1.0 implementations are plain CREATE deploys (no mined address). On a live chain deploy it first
+    //      with UpgradeRemoteHopV2.s.sol (this script compiles under FOUNDRY_PROFILE=deploy for the V2/proxy salts)
+    //      and pass it in as REMOTE_HOP_V201_IMPL; the fresh deploy below is for tests.
+    Vm vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+    address hopV201 = vm.envOr("REMOTE_HOP_V201_IMPL", address(0));
+    if (hopV201 == address(0)) hopV201 = address(new RemoteHopV201());
+    assertHopV201(hopV201);
 
     ITransparentUpgradeableProxy(address(proxy)).upgradeToAndCall(hopV201, initializeArgs);
     ITransparentUpgradeableProxy(address(proxy)).changeAdmin(_proxyAdmin);

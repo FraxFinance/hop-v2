@@ -25,6 +25,7 @@
    - 3.4 [RemoteAdmin](#34-remoteadmin)
    - 3.5 [RemoteVaultHop](#35-remotevaulthop)
    - 3.6 [RemoteVaultDeposit](#36-remotevaultdeposit)
+   - 3.7 [Hub Actions & MintRedeemModule (2.1.0)](#37-hub-actions--mintredeemmodule-210)
 4. [Message Encoding & Codec](#4-message-encoding--codec)
 5. [Fee Structure](#5-fee-structure)
 6. [Security Model](#6-security-model)
@@ -37,6 +38,7 @@
    - 7.6 [Cross-Chain Vault Redeem](#76-cross-chain-vault-redeem)
    - 7.7 [Remote Admin Call](#77-remote-admin-call)
    - 7.8 [Implementing IHopComposer](#78-implementing-ihopcomposer)
+   - 7.11 [frxUSD ⇄ sfrxUSD in One Call (Mint/Redeem Action)](#711-frxusd--sfrxusd-in-one-call-mintredeem-action)
 8. [Deployed Addresses](#8-deployed-addresses)
 9. [Integration Checklist](#9-integration-checklist)
 
@@ -947,6 +949,38 @@ function quote(uint256 amount) public view returns (uint256 fee)
 
 ---
 
+### 3.7 Hub Actions & MintRedeemModule (2.1.0)
+
+Hop 2.1.0 lets the Fraxtal hub execute a **tagged action** on the tokens it receives before routing them. The tag
+travels in `HopMessage.data`; the only action today is `HopActions.MINT_REDEEM` (`0xd71e9971`,
+`bytes4(keccak256("frax.hop.action.mintRedeem.v1"))`), which converts frxUSD ⇄ sfrxUSD through the Fraxtal
+mint-redeemer and then forwards the **output** OFT to `recipient` on `dstEid` as a plain send, with `data` cleared.
+
+```
+spoke A ──sendOFT(frxUSD, dstEid, recipient, amount, 0, 0xd71e9971, refundTo)──► Fraxtal hub
+                                                                                   │ lzCompose
+                                                                                   │ _applyAction → MintRedeemModule.convert
+                                                                                   │   deposit(frxUSD) → sfrxUSD minted to the hub
+                                                                                   │ data = "" , plain send of sfrxUSD
+                                                                                   ▼
+                                                                          recipient on dstEid (any chain, or Fraxtal)
+```
+
+| Piece | Where | Role |
+|---|---|---|
+| `HopActions` | library, shared | tag constant, `isMintRedeem(bytes)`, the 1,500,000 hub compose budget spokes book for tagged sends |
+| `FraxtalHopV201._applyAction` | hub | runs in `lzCompose` and in Fraxtal-originated `sendOFT`; approves the module, calls `convert`, verifies the output by balance and `approvedOft`, clears `data` |
+| `FraxtalHopV201.setActionModule` | hub, `DEFAULT_ADMIN_ROLE` | points the hub at the module; zero disables every action (`ActionUnavailable`) |
+| `MintRedeemModule` | Fraxtal, upgradeable behind the hub's ProxyAdmin | `convert(action, oftIn, amountIn)`: pulls from the hub, `deposit`/`redeem` on the mint-redeemer with the hub as receiver; `onlyHub`, pausable, holds nothing between calls |
+
+Rules worth knowing:
+
+- A tag is exactly 4 bytes. Any other `data` is composer payload and reaches `IHopComposer.hopCompose` on the destination as before.
+- `dstEid == srcEid` with the tag is a **round trip** through Fraxtal (priced with `quoteHop(srcEid, …)`), not the free local transfer that untagged same-chain sends get.
+- The hub refuses a zero recipient in `lzCompose`, and every failure in the action (module unset or paused, unsupported OFT, mint-redeemer revert, bad module output) reverts the compose atomically. LayerZero keeps it replayable; nothing is converted on a failed compose.
+- Untrusted composers may use the tag too; as for any untrusted route, the second leg must be funded with compose value.
+- The hub's `quote` prices a tagged send on what actually leaves: the output OFT as a plain send.
+
 ## 4. Message Encoding & Codec
 
 All composed messages use LayerZero's `OFTComposeMsgCodec`. The full wire format is:
@@ -979,6 +1013,12 @@ This ensures each (token, source chain, message sequence, sender) combination is
 
 ---
 
+### Action tags in `data` (2.1.0)
+
+`data` is opaque to the codec. The hub recognises exactly `data.length == 4 && bytes4(data) == 0xd71e9971` as the
+mint/redeem action (see 3.7). Composer payloads are ABI-encoded and therefore at least 32 bytes, so the two can never
+collide.
+
 ## 5. Fee Structure
 
 ### Fee Components
@@ -1002,6 +1042,8 @@ Hop service fee (for remote→remote only, charged on Fraxtal leg):
 | Fraxtal → Remote | LZ fee only (`hopFeeOnFraxtal = 0` when `localEid == FRAXTAL_EID`) |
 | Remote → Fraxtal | LZ fee only (Fraxtal is the destination, one leg only) |
 | Remote A → Remote B | LZ(A→Fraxtal) + `quoteHop(B)` including service fee |
+| Remote A → Remote B, mint/redeem tag | LZ(A→Fraxtal, 1.5M hub compose gas) + `quoteHop(B, 0, tag)`; `B == A` is allowed and priced the same way |
+| Remote → Fraxtal, mint/redeem tag | LZ(A→Fraxtal, 1.5M hub compose gas) only; the output is delivered locally on Fraxtal |
 
 ### Service Fee (`hopFee`)
 
@@ -1083,14 +1125,20 @@ All amounts are floored to `decimalConversionRate` multiples before sending. Thi
 
 ### 6.6 Fee Refunds
 
-`sendOFT` and vault functions refund overpaid native tokens:
+`sendOFT` and vault functions refund overpaid native tokens. Since 2.1.0 the seven-argument `sendOFT` names the
+refund address; the four- and six-argument forms refund `msg.sender` as before:
 
 ```solidity
 if (msg.value > sendFee) {
-    (bool success,) = payable(msg.sender).call{value: msg.value - sendFee}("");
+    (bool success,) = payable(refundTo).call{value: msg.value - sendFee}("");
     if (!success) revert RefundFailed();
 }
 ```
+
+`refundTo` must be non-zero (`ZeroRefundAddress`) and able to receive native value, otherwise the whole send reverts
+and the caller keeps their tokens. On Tempo the refund is the unspent part of a padded TIP20 fee pull, returned to
+the same `refundTo`. A contract acting for a user (a composer's proxy, a router) passes the user as both
+`recipient` and `refundTo`, so neither the tokens nor the unspent fee land on the proxy.
 
 ---
 
@@ -1500,6 +1548,25 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 
 ---
 
+### 7.11 frxUSD ⇄ sfrxUSD in One Call (Mint/Redeem Action)
+
+Convert frxUSD on chain A into sfrxUSD delivered to `user` on chain B (B may be A, or Fraxtal), with the unspent
+fee returned to `user` rather than to the calling contract. Requires the hub at 2.1.0; gate on
+`FraxtalHopV201(hub).version()` before sending the tag.
+
+```solidity
+bytes memory TAG = hex"d71e9971"; // HopActions.MINT_REDEEM
+bytes32 to = bytes32(uint256(uint160(user)));
+
+IERC20(IOFT(frxUsdOft).token()).approve(hop, amount);
+uint256 fee = IHopV201(hop).quote(frxUsdOft, dstEid, to, amount, 0, TAG);
+IHopV201(hop).sendOFT{ value: fee }(frxUsdOft, dstEid, to, amount, 0, TAG, user);
+```
+
+- Quote and send in the same transaction and there is nothing to refund; a padded `msg.value` is returned to `refundTo`.
+- sfrxUSD → frxUSD is the same call with `sfrxUsdOft`.
+- Spokes still on 2.0.x accept the tag through the six-argument `sendOFT` (refund to the caller) once the hub is 2.1.0.
+
 ## 8. Deployed Addresses
 
 ### HopV2 Contracts
@@ -1550,6 +1617,14 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 - [ ] Validate `msg.sender == localHopAddress` inside `hopCompose`
 - [ ] Set `dstGas` high enough to cover your `hopCompose` logic (minimum `400_000`)
 - [ ] Test with `_data.length == 0` (no compose) and `_data.length > 0` paths
+
+### For the Mint/Redeem Action (2.1.0)
+
+- [ ] Hub `version()` is `2.1.0` and `actionModule() != address(0)`; never send the tag to an older hub
+- [ ] `data` is exactly `hex"d71e9971"`; `dstGas` is `0`
+- [ ] `oft` is the frxUSD or sfrxUSD OFT on your chain; anything else reverts `UnsupportedOFT` on Fraxtal
+- [ ] Pass the user as `recipient` and, on 2.1.0 spokes, as `refundTo`
+- [ ] Quote with the same six arguments you send with; same-chain destinations are a paid round trip, not a local transfer
 
 ### For Vault Integration
 

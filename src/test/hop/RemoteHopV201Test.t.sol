@@ -56,6 +56,25 @@ contract RemoteHopV201Test is FraxTest {
 
     receive() external payable {}
 
+    /// @dev Same guard as HopV2: a recipient that narrows to address(0) is refused
+    ///      before any token is pulled, on both entrypoints.
+    function test_SendOFT_ZeroRecipient() public {
+        address oft = approvedOfts[0];
+        deal(frxUSD, address(this), 1e18);
+        IERC20(frxUSD).approve(address(remoteHop), 1e18);
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.sendOFT(oft, FRAXTAL_EID, bytes32(0), 1e18, 0, "");
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.sendOFT(oft, FRAXTAL_EID, bytes32(0), 1e18);
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.sendOFT(oft, FRAXTAL_EID, bytes32(uint256(type(uint96).max) << 160), 1e18, 0, "");
+
+        assertEq(IERC20(frxUSD).allowance(address(this), address(remoteHop)), 1e18, "allowance untouched");
+    }
+
     function test_RecoverETH() public {
         deal(address(remoteHop), 10 ether);
         remoteHop.grantRole(RECOVER_ETH_ROLE, address(this));
