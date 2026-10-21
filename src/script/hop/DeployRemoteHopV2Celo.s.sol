@@ -17,8 +17,7 @@ contract DeployRemoteHopV2Celo is DeployRemoteHopV2 {
         endpoint = 0x1a44076050125825900e736c501f859c50fE728c;
         localEid = 30_125;
 
-        // Celo Safe not created yet: msig stays unset so _validateAddrs() refuses to run
-        // msig = ;
+        msig = 0xFfdBB6221390d05366df8F6733E586c8CE92103C;
 
         EXECUTOR = 0x1dDbaF8b75F2291A97C22428afEf411b7bB19e28;
         DVN = 0x75b073994560A5c03Cd970414d9170be0C6e5c36;
