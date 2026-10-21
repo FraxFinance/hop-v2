@@ -65,6 +65,7 @@ contract HopConstants {
         _addHopV2Target(8453, "Base", defaultHop);
         _addHopV2Target(98_866, "Plume", defaultHop);
         _addHopV2Target(42_161, "Arbitrum", defaultHop);
+        _addHopV2Target(42_220, "Celo", defaultHop);
         _addHopV2Target(43_114, "Avalanche", defaultHop);
         _addHopV2Target(57_073, "Ink", defaultHop);
         _addHopV2Target(59_144, "Linea", defaultHop);
@@ -94,6 +95,7 @@ contract HopConstants {
         _addRemoteAdminRoute(4217, 30_410, 0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f); // Tempo
         _addRemoteAdminRoute(4663, 30_416, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Robinhood
         _addRemoteAdminRoute(5031, 30_380, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Somnia
+        _addRemoteAdminRoute(42_220, 30_125, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Celo
 
         composeGasOverrides[137] = 500_000; // Polygon
         composeGasOverrides[143] = 600_000; // Monad
