@@ -9,17 +9,25 @@ import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 // ====================================================================
 //
 // Tempo cannot share the salt-mined `RemoteHopV201` vanity implementation
-// (`0xD3b7B923990000003500009264561127A87B00Bd`) because the Tempo variant has
-// custom EndpointV2Alt / TIP20 fee semantics — its constructor takes
-// `_endpoint`, so its bytecode is parameterized per chain and never on the
-// vanity scheme. The proxy at `0x0000006D38568b00B457580b734e0076C62de659`
+// (`0x0000000f9a66622C8885E1071B78E37b2b3ecCCd`) because the Tempo variant has
+// custom EndpointV2Alt / TIP20 fee semantics and its constructor takes
+// `_endpoint`. The proxy at `0x0000006D38568b00B457580b734e0076C62de659`
 // stays put; only the implementation behind it changes.
 //
+// NOTE: this script uses plain CREATE, so the implementation lands on a
+// nonce-derived address. `UpgradeRemoteHopV2.s.sol` takes the other approach for
+// chain 4217 -- CREATE2 under a mined salt, asserting
+// `0x00000000b2707226814D5792137fb0B482310A36`, which is the implementation live
+// behind the Tempo proxy today. Pick deliberately: a plain-CREATE redeploy does
+// not reproduce that vanity prefix, and any source change to `HopV201Tempo` or
+// `RemoteHopV201Tempo` invalidates the mined salt and needs a fresh mine.
+//
 // After this upgrade the proxy delegates to `RemoteHopV201Tempo` (inherits
-// `HopV201Tempo`), which mirrors `HopV201`'s recover surface — `RECOVER_ROLE`
-// + `recoverERC20` — and drops both the unbounded `recover(address,uint256,bytes)`
-// from `HopV2` and the `recoverETH` from `HopV201` (Tempo settles fees in
-// TIP20 via EndpointV2Alt; there is no native ETH surface to recover).
+// `HopV201Tempo`), which keeps `HopV201`'s DEFAULT_ADMIN_ROLE-gated `recoverERC20`
+// and drops both the unbounded `recover(address,uint256,bytes)` from `HopV2` and
+// the RECOVER_ETH_ROLE-gated `recoverETH` from `HopV201` (Tempo settles fees in
+// TIP20 via EndpointV2Alt; there is no native ETH surface to recover, so the
+// Tempo `recoverETH` reverts `NotImplemented`).
 // Storage layout is unchanged because both versions share the same ERC-7201 slot.
 //
 // Generates the Safe batch JSON at:

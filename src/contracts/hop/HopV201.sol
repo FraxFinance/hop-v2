@@ -69,6 +69,7 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     event RecoveredETH(uint256 amount);
 
     error InvalidOFT();
+    error ZeroRecipient();
     error HopPaused();
     error NotEndpoint();
     error NotAuthorized();
@@ -89,7 +90,7 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     }
 
     function version() external pure returns (string memory) {
-        return "2.0.1";
+        return "2.0.2";
     }
 
     function __init_HopV201(
@@ -142,6 +143,12 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         uint128 _dstGas,
         bytes memory _data
     ) public payable virtual {
+        // Reject a recipient that truncates to the zero address: the send would be
+        // accepted here and then burn or strand the tokens on the destination, where
+        // only an admin could recover them. Checked on the narrowed address so a
+        // bytes32 with non-zero upper bits is caught too, and before any token is
+        // pulled so the caller keeps their funds.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();
         if (!$.approvedOft[_oft]) revert InvalidOFT();

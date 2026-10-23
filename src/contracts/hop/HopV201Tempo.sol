@@ -37,9 +37,11 @@ import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 ///
 ///         2. `sendOFT(...)`, `quote(...)`, and `_sendToDestination(...)` are `virtual`
 ///            and `_getHopV2Storage()` is `internal`, so `RemoteHopV201Tempo` can override
-///            the OFT-Alt fee plumbing without touching `HopV201` itself (whose bytecode
-///            is salt-mined to `0xD3b7B923990000003500009264561127A87B00Bd` and must
-///            stay frozen).
+///            the OFT-Alt fee plumbing without touching `HopV201` itself. `HopV201`'s
+///            bytecode is pinned: `RemoteHopV201` is deployed by mined CREATE2 salt to
+///            `0x0000000f9a66622C8885E1071B78E37b2b3ecCCd` on every chain, asserted in
+///            `UpgradeRemoteHopV2.s.sol` and `DeployRemoteHopV2.s.sol`, so editing
+///            `HopV201` moves that address and invalidates both salts.
 ///
 ///         Storage layout reuses the existing ERC-7201 slot
 ///         (`keccak256(abi.encode(uint256(keccak256("frax.storage.HopV2")) - 1)) & ~bytes32(uint256(0xff))`),
@@ -97,6 +99,7 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
     event RecoveredETH(uint256 amount);
 
     error InvalidOFT();
+    error ZeroRecipient();
     error HopPaused();
     error NotEndpoint();
     error NotAuthorized();
@@ -118,7 +121,7 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
     }
 
     function version() external pure returns (string memory) {
-        return "2.0.1";
+        return "2.0.2";
     }
 
     function __init_HopV201(
@@ -171,6 +174,12 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         uint128 _dstGas,
         bytes memory _data
     ) public payable virtual {
+        // Reject a recipient that truncates to the zero address: the send would be
+        // accepted here and then burn or strand the tokens on the destination, where
+        // only an admin could recover them. Checked on the narrowed address so a
+        // bytes32 with non-zero upper bits is caught too, and before any token is
+        // pulled so the caller keeps their funds.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();
         if (!$.approvedOft[_oft]) revert InvalidOFT();
