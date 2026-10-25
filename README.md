@@ -581,6 +581,11 @@ error InsufficientFee();  // msg.value < required fee
 error RefundFailed();     // ETH refund call failed
 ```
 
+`HopV201`, the implementation behind every deployed proxy, adds `ZeroRecipient()`: `sendOFT` and `quote` revert when
+the recipient narrows to `address(0)`, and the hub's `lzCompose` reverts before routing such a message, so the compose
+stays queued at the endpoint and the funds stay on the hub for admin recovery (`recoverERC20` + `setMessageProcessed`).
+It also adds `RecoverFailed()` and `LengthMismatch()`.
+
 #### Fee Calculation (`quoteHop`)
 
 ```solidity
@@ -660,6 +665,8 @@ lzCompose(oft, guid, message, executor, executorData)
     ├─ if !isTrusted:
     │    overwrite hopMessage.srcEid with OFTComposeMsgCodec.srcEid()
     │    overwrite hopMessage.sender  with OFTComposeMsgCodec.composeFrom()
+    │
+    ├─ recipient narrows to address(0)?        (ZeroRecipient, V201: compose stays queued, funds stay on the hub)
     │
     ├─ if hopMessage.dstEid == FRAXTAL_EID:
     │    _sendLocal(oft, amount, hopMessage)

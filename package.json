@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@fraxfinance/frax-oft-upgradeable": "github:FraxFinance/frax-oft-upgradeable#de9f494e342975d2dbdc19619897115517efd724",
-    "@fraxfinance/layerzero-v2-upgradeable": "github:fraxfinance/LayerZero-v2-upgradeable",
+    "@fraxfinance/layerzero-v2-upgradeable": "github:fraxfinance/LayerZero-v2-upgradeable#004f9ad064cc7eab45e57a9b5b004b30bec8e238",
     "@layerzerolabs/lz-evm-messagelib-v2": "^3.0.115",
     "@layerzerolabs/lz-evm-v1-0.7": "^3.0.115",
     "@layerzerolabs/lz-v2-utilities": "^3.0.115",

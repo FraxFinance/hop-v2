@@ -18,6 +18,7 @@ contract RemoteHopV201Test is FraxTest {
 
     uint32 constant FRAXTAL_EID = 30_255;
     uint32 constant ARBITRUM_EID = 30_110;
+    uint32 constant ETHEREUM_EID = 30_101;
 
     /// @dev keccak256("RECOVER_ETH_ROLE")
     bytes32 constant RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
@@ -56,8 +57,8 @@ contract RemoteHopV201Test is FraxTest {
 
     receive() external payable {}
 
-    /// @dev Same guard as HopV2: a recipient that narrows to address(0) is refused
-    ///      before any token is pulled, on both entrypoints.
+    /// @dev A recipient that narrows to address(0) is refused before any token is pulled, on both
+    ///      entrypoints and on the direct, multi-hop, data-bearing and local shapes.
     function test_SendOFT_ZeroRecipient() public {
         address oft = approvedOfts[0];
         deal(frxUSD, address(this), 1e18);
@@ -72,7 +73,31 @@ contract RemoteHopV201Test is FraxTest {
         vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
         remoteHop.sendOFT(oft, FRAXTAL_EID, bytes32(uint256(type(uint96).max) << 160), 1e18, 0, "");
 
+        // Multi-hop, data-bearing and local destinations take the same check.
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.sendOFT(oft, ETHEREUM_EID, bytes32(0), 1e18, 400_000, "");
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.sendOFT(oft, ETHEREUM_EID, bytes32(0), 1e18, 400_000, hex"01");
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.sendOFT(oft, ARBITRUM_EID, bytes32(0), 1e18, 0, "");
+
         assertEq(IERC20(frxUSD).allowance(address(this), address(remoteHop)), 1e18, "allowance untouched");
+    }
+
+    /// @dev The quote refuses the recipient the send refuses.
+    function test_Quote_ZeroRecipient() public {
+        address oft = approvedOfts[0];
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.quote(oft, FRAXTAL_EID, bytes32(0), 1e18, 0, "");
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.quote(oft, ETHEREUM_EID, bytes32(uint256(type(uint96).max) << 160), 1e18, 400_000, hex"01");
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        remoteHop.quote(oft, ARBITRUM_EID, bytes32(0), 1e18, 0, "");
     }
 
     function test_RecoverETH() public {

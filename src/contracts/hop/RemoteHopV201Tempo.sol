@@ -191,6 +191,8 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         uint128 _dstGas,
         bytes memory _data
     ) internal view returns (uint256) {
+        // Same recipient check as sendOFT, applied here so quote and quoteStatic both fail closed.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 

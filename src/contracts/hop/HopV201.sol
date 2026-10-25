@@ -203,6 +203,8 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         uint128 _dstGas,
         bytes memory _data
     ) public view returns (uint256) {
+        // Same recipient check as sendOFT, so the quote and the send agree on this input.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 

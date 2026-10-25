@@ -185,4 +185,55 @@ contract RemoteHopV201TempoRealOFTIntegration is RemoteHopV2TempoRealOFTIntegrat
             type(uint256).max
         );
     }
+
+    // ───────────────────────── zero recipient (V201 entrypoints) ─────────────────────────
+
+    /// @dev The recipient check runs before the fee cap and before either pull: with a zero cap and no
+    ///      allowance granted, a cap-first or pull-first ordering would surface FeeAboveCap or the token's
+    ///      allowance error instead.
+    function test_Tempo_SendOFT_FeeCap_ZeroRecipient_RefusedBeforeCapAndPulls() public {
+        bytes32[2] memory bad = [bytes32(0), bytes32(uint256(type(uint96).max) << 160)];
+        uint32[3] memory dsts = [FRAXTAL_EID, CHAIN_A_EID, TEMPO_EID];
+        uint256 frx0 = tempoFrxUsdToken.balanceOf(alice);
+        uint256 path0 = StdTokens.PATH_USD.balanceOf(alice);
+        assertEq(IERC20(address(tempoFrxUsdToken)).allowance(alice, address(remoteHopTempo)), 0, "setup: no allowance");
+
+        vm.startPrank(alice);
+        for (uint256 i; i < bad.length; ++i) {
+            for (uint256 j; j < dsts.length; ++j) {
+                vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+                _hop().sendOFT(
+                    address(tempoFrxUsdAdapter),
+                    dsts[j],
+                    bad[i],
+                    10e6,
+                    400_000,
+                    "",
+                    StdTokens.PATH_USD_ADDRESS,
+                    0
+                );
+            }
+        }
+        vm.stopPrank();
+
+        assertEq(tempoFrxUsdToken.balanceOf(alice), frx0, "no principal pulled");
+        assertEq(StdTokens.PATH_USD.balanceOf(alice), path0, "no fee pulled");
+    }
+
+    /// @dev Both quote views fail closed on the input the send refuses.
+    function test_Tempo_Quote_ZeroRecipient() public {
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        _hop().quote(address(tempoFrxUsdAdapter), FRAXTAL_EID, bytes32(0), 10e6, 0, "");
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroRecipient()"));
+        _hop().quoteStatic(
+            address(tempoFrxUsdAdapter),
+            CHAIN_A_EID,
+            bytes32(uint256(type(uint96).max) << 160),
+            10e6,
+            400_000,
+            "",
+            StdTokens.PATH_USD_ADDRESS
+        );
+    }
 }

@@ -37,11 +37,8 @@ import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
 ///
 ///         2. `sendOFT(...)`, `quote(...)`, and `_sendToDestination(...)` are `virtual`
 ///            and `_getHopV2Storage()` is `internal`, so `RemoteHopV201Tempo` can override
-///            the OFT-Alt fee plumbing without touching `HopV201` itself. `HopV201`'s
-///            bytecode is pinned: `RemoteHopV201` is deployed by mined CREATE2 salt to
-///            `0x0000000f9a66622C8885E1071B78E37b2b3ecCCd` on every chain, asserted in
-///            `UpgradeRemoteHopV2.s.sol` and `DeployRemoteHopV2.s.sol`, so editing
-///            `HopV201` moves that address and invalidates both salts.
+///            the OFT-Alt fee plumbing without changing `HopV201`'s behaviour on the
+///            other chains.
 ///
 ///         Storage layout reuses the existing ERC-7201 slot
 ///         (`keccak256(abi.encode(uint256(keccak256("frax.storage.HopV2")) - 1)) & ~bytes32(uint256(0xff))`),
@@ -234,6 +231,8 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         uint128 _dstGas,
         bytes memory _data
     ) public view virtual returns (uint256) {
+        // Same recipient check as sendOFT, so the quote and the send agree on this input.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 
