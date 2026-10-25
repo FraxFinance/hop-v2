@@ -6,6 +6,7 @@ import { FraxtalHopV201 } from "src/contracts/hop/FraxtalHopV201.sol";
 import { HopMessage } from "src/contracts/interfaces/IHopV201.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { IMessagingComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessagingComposer.sol";
 import { deployFraxtalHopV201 } from "src/script/hop/upgrade/DeployFraxtalHopV201.s.sol";
 
 contract FraxtalHopV201ExtendedTest is FraxTest {
@@ -179,6 +180,100 @@ contract FraxtalHopV201ExtendedTest is FraxTest {
 
         assertEq(IERC20(frxUSD).balanceOf(recipient), 1e18, "recipient credited");
         assertTrue(hop.messageProcessed(_messageHash(oft, 1, remoteSpoke)), "message marked processed");
+    }
+
+    /// @dev A compose the endpoint holds as pending can be retired: the mark sets the replay key derived
+    ///      from the queued bytes, and the endpoint's later delivery takes the duplicate early return, so
+    ///      the funds stay on the hub for recovery and the queue entry closes.
+    function test_SetMessageProcessed_PendingCompose_RetiresIt() public {
+        address oft = approvedOfts[0];
+        address remoteSpoke = address(0x456);
+        address recipient = address(0xBEEF);
+        hop.setRemoteHop(ARBITRUM_EID, remoteSpoke);
+        deal(frxUSD, address(hop), 1e18);
+
+        bytes32 guid = keccak256("pending");
+        bytes memory message = _composeMessage(FRAXTAL_EID, bytes32(uint256(uint160(recipient))), "", remoteSpoke, 7);
+        _queueCompose(oft, guid, 0, message);
+
+        vm.expectEmit(address(hop));
+        emit MessageHash(oft, ARBITRUM_EID, 7, bytes32(uint256(uint160(remoteSpoke))));
+        hop.setMessageProcessed(oft, guid, 0, message);
+        assertTrue(hop.messageProcessed(_messageHash(oft, 7, remoteSpoke)), "replay key set from the queued bytes");
+
+        IMessagingComposer(ENDPOINT).lzCompose(oft, address(hop), guid, 0, message, "");
+
+        assertEq(IERC20(frxUSD).balanceOf(recipient), 0, "retired compose pays nothing");
+        assertEq(IERC20(frxUSD).balanceOf(address(hop)), 1e18, "funds stay on the hub");
+        assertEq(
+            IMessagingComposer(ENDPOINT).composeQueue(oft, address(hop), guid, 0),
+            bytes32(uint256(1)),
+            "queue entry closed"
+        );
+    }
+
+    /// @dev Nothing the endpoint does not hold as pending can be marked: a message that was never queued,
+    ///      or one that differs from the queued bytes in any field of the queue key or the payload.
+    function test_SetMessageProcessed_NotQueued_Reverts() public {
+        address oft = approvedOfts[0];
+        address remoteSpoke = address(0x456);
+        bytes32 guid = keccak256("pending");
+        bytes memory message = _composeMessage(FRAXTAL_EID, bytes32(uint256(0xBEEF)), "", remoteSpoke, 7);
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        hop.setMessageProcessed(oft, guid, 0, message);
+
+        _queueCompose(oft, guid, 0, message);
+        bytes memory otherNonce = _composeMessage(FRAXTAL_EID, bytes32(uint256(0xBEEF)), "", remoteSpoke, 8);
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        hop.setMessageProcessed(oft, guid, 0, otherNonce);
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        hop.setMessageProcessed(oft, guid, 1, message);
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        hop.setMessageProcessed(oft, keccak256("other"), 0, message);
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        hop.setMessageProcessed(approvedOfts[1], guid, 0, message);
+
+        assertFalse(hop.messageProcessed(_messageHash(oft, 7, remoteSpoke)), "nothing marked");
+        assertFalse(hop.messageProcessed(_messageHash(oft, 8, remoteSpoke)), "future nonce not pre-empted");
+    }
+
+    /// @dev Once the endpoint has delivered a compose it is no longer pending, so it cannot be marked.
+    function test_SetMessageProcessed_Delivered_Reverts() public {
+        address oft = approvedOfts[0];
+        address remoteSpoke = address(0x456);
+        address recipient = address(0xBEEF);
+        hop.setRemoteHop(ARBITRUM_EID, remoteSpoke);
+        deal(frxUSD, address(hop), 1e18);
+
+        bytes32 guid = keccak256("delivered");
+        bytes memory message = _composeMessage(FRAXTAL_EID, bytes32(uint256(uint160(recipient))), "", remoteSpoke, 9);
+        _queueCompose(oft, guid, 0, message);
+        IMessagingComposer(ENDPOINT).lzCompose(oft, address(hop), guid, 0, message, "");
+        assertEq(IERC20(frxUSD).balanceOf(recipient), 1e18, "delivered normally");
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        hop.setMessageProcessed(oft, guid, 0, message);
+    }
+
+    function test_SetMessageProcessed_NotAuthorized() public {
+        address oft = approvedOfts[0];
+        bytes32 guid = keccak256("pending");
+        bytes memory message = _composeMessage(FRAXTAL_EID, bytes32(uint256(0xBEEF)), "", address(0x456), 7);
+        _queueCompose(oft, guid, 0, message);
+
+        vm.prank(address(0xdead));
+        vm.expectRevert();
+        hop.setMessageProcessed(oft, guid, 0, message);
+    }
+
+    event MessageHash(address oft, uint32 indexed srcEid, uint64 indexed nonce, bytes32 indexed composeFrom);
+
+    /// @dev Queues `message` at the real endpoint exactly as the OFT does after crediting the hop.
+    function _queueCompose(address oft, bytes32 guid, uint16 index, bytes memory message) internal {
+        vm.prank(oft);
+        IMessagingComposer(ENDPOINT).sendCompose(address(hop), guid, index, message);
     }
 
     function _composeMessage(

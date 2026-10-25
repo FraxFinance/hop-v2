@@ -5,6 +5,9 @@ import "frax-std/FraxTest.sol";
 import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { OFTMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
+import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { IMessagingComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessagingComposer.sol";
+import { HopMessage } from "src/contracts/interfaces/IHopV201.sol";
 import { deployRemoteHopV201 } from "src/script/hop/upgrade/DeployRemoteHopV201.s.sol";
 
 contract RemoteHopV201Test is FraxTest {
@@ -134,5 +137,54 @@ contract RemoteHopV201Test is FraxTest {
         vm.prank(address(0xdead));
         vm.expectRevert();
         remoteHop.recoverERC20(frxUSD, 1e18);
+    }
+
+    /// @dev A spoke can retire a compose the endpoint holds as pending, and only that one: the endpoint's
+    ///      later delivery takes the duplicate early return and pays nothing, and the queue entry closes.
+    function test_SetMessageProcessed_RetiresPendingCompose() public {
+        address oft = approvedOfts[0];
+        address recipient = address(0xBEEF);
+        deal(frxUSD, address(remoteHop), 1e18);
+
+        bytes32 guid = keccak256("pending");
+        bytes memory composeMsg = abi.encode(
+            HopMessage({
+                srcEid: ETHEREUM_EID,
+                dstEid: ARBITRUM_EID,
+                dstGas: 400_000,
+                sender: bytes32(uint256(uint160(address(0x123)))),
+                recipient: bytes32(uint256(uint160(recipient))),
+                data: ""
+            })
+        );
+        bytes memory message = OFTComposeMsgCodec.encode(
+            5,
+            FRAXTAL_EID,
+            1e18,
+            abi.encodePacked(OFTMsgCodec.addressToBytes32(fraxtalHop), composeMsg)
+        );
+        bytes32 messageHash = keccak256(
+            abi.encode(oft, FRAXTAL_EID, uint64(5), OFTMsgCodec.addressToBytes32(fraxtalHop))
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        remoteHop.setMessageProcessed(oft, guid, 0, message);
+
+        vm.prank(oft);
+        IMessagingComposer(ENDPOINT).sendCompose(address(remoteHop), guid, 0, message);
+        remoteHop.setMessageProcessed(oft, guid, 0, message);
+        assertTrue(remoteHop.messageProcessed(messageHash), "replay key set from the queued bytes");
+
+        IMessagingComposer(ENDPOINT).lzCompose(oft, address(remoteHop), guid, 0, message, "");
+        assertEq(IERC20(frxUSD).balanceOf(recipient), 0, "retired compose pays nothing");
+        assertEq(IERC20(frxUSD).balanceOf(address(remoteHop)), 1e18, "funds stay on the spoke");
+        assertEq(
+            IMessagingComposer(ENDPOINT).composeQueue(oft, address(remoteHop), guid, 0),
+            bytes32(uint256(1)),
+            "queue entry closed"
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        remoteHop.setMessageProcessed(oft, guid, 0, message);
     }
 }

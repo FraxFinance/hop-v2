@@ -6,6 +6,7 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { IMessagingComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessagingComposer.sol";
 
 import { ILayerZeroDVN } from "src/contracts/interfaces/ILayerZeroDVN.sol";
 import { ILayerZeroTreasury } from "src/contracts/interfaces/ILayerZeroTreasury.sol";
@@ -104,6 +105,7 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
     error RefundFailed();
     error RecoverFailed();
     error LengthMismatch();
+    error ComposeNotPending();
     error NotImplemented();
 
     modifier onlyAuthorized() {
@@ -471,17 +473,32 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         revert NotImplemented();
     }
 
+    /// @notice Retire a compose that is still queued at the endpoint for this hop: its later execution
+    ///         returns early without moving funds. Use it before recovering the principal of a compose
+    ///         that can never succeed, so the recovered funds cannot also be paid out.
+    /// @dev `_message` must be the exact bytes the endpoint holds as pending for (`_oft`, this hop, `_guid`,
+    ///      `_index`), and the replay key is derived from it. A compose that was never queued or has already
+    ///      been delivered reverts `ComposeNotPending`, so a mark cannot pre-empt a future message.
+    /// @param _oft OFT that queued the compose (the endpoint's `from`)
+    /// @param _guid LayerZero GUID of the message
+    /// @param _index Compose index of the message
+    /// @param _message Composed message as queued (`OFTComposeMsgCodec` format)
     function setMessageProcessed(
         address _oft,
-        uint32 _srcEid,
-        uint64 _nonce,
-        bytes32 _composeFrom
+        bytes32 _guid,
+        uint16 _index,
+        bytes calldata _message
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         HopV2Storage storage $ = _getHopV2Storage();
+        if (IMessagingComposer($.endpoint).composeQueue(_oft, address(this), _guid, _index) != keccak256(_message)) {
+            revert ComposeNotPending();
+        }
 
-        bytes32 messageHash = keccak256(abi.encode(_oft, _srcEid, _nonce, _composeFrom));
-        $.messageProcessed[messageHash] = true;
-        emit MessageHash(_oft, _srcEid, _nonce, _composeFrom);
+        uint32 srcEid = OFTComposeMsgCodec.srcEid(_message);
+        uint64 nonce = OFTComposeMsgCodec.nonce(_message);
+        bytes32 composeFrom = OFTComposeMsgCodec.composeFrom(_message);
+        $.messageProcessed[keccak256(abi.encode(_oft, srcEid, nonce, composeFrom))] = true;
+        emit MessageHash(_oft, srcEid, nonce, composeFrom);
     }
 
     // Storage views
