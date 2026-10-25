@@ -129,7 +129,7 @@ contract HopV201Tempo is AccessControlEnumerableUpgradeable, IHopV201 {
         address _DVN,
         address _TREASURY,
         address[] memory _approvedOfts
-    ) internal {
+    ) internal onlyInitializing {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
         HopV2Storage storage $ = _getHopV2Storage();
