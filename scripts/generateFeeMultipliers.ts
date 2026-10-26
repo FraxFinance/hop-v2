@@ -97,25 +97,11 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://ethereum-rpc.publicnode.com", "https://1rpc.io/eth"],
   },
   {
-    name: "Abstract",
-    chainId: 2741,
-    eid: 30_324,
-    executor: "0x643e1471f37c4680df30cf0c540cd379a0ff58a5",
-    rpcs: ["https://api.mainnet.abs.xyz", "https://abstract.drpc.org"],
-  },
-  {
     name: "Arbitrum",
     chainId: 42_161,
     eid: 30_110,
     executor: "0x31cae3b7fb82d847621859fb1585353c5720660d",
     rpcs: ["https://arb1.arbitrum.io/rpc", "https://arbitrum-one-rpc.publicnode.com"],
-  },
-  {
-    name: "Aurora",
-    chainId: 1_313_161_554,
-    eid: 30_211,
-    executor: "0xa2b402ffe8dd7460a8b425644b6b9f50667f0a61",
-    rpcs: ["https://mainnet.aurora.dev", "https://1rpc.io/aurora"],
   },
   {
     name: "Avalanche",
@@ -137,6 +123,13 @@ const CHAINS: ChainConfig[] = [
     eid: 30_102,
     executor: "0x3ebd570ed38b1b3b4bc886999fcf507e9d584859",
     rpcs: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"],
+  },
+  {
+    name: "Celo",
+    chainId: 42_220,
+    eid: 30_125,
+    executor: "0x1ddbaf8b75f2291a97c22428afef411b7bb19e28",
+    rpcs: ["https://forno.celo.org", "https://celo-rpc.publicnode.com"],
   },
   {
     name: "HyperEVM",

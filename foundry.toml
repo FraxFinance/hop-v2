@@ -69,6 +69,10 @@ evm_version = "cancun"
 [profile.testbuild]
 src = "_"
 script = "_"
+# Legacy codegen (no via-IR) only compiles the vault tests - the hop tests and their mocks hit
+# "Stack too deep" without via-IR. Recent forge builds codegen every file under `test`, not just
+# the --match-path target, so scope the directory instead of relying on the filter.
+test = "src/test/vault"
 optimizer = false
 via_ir = false
 evm_version = "cancun"

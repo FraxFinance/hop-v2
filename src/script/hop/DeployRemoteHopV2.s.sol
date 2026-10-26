@@ -36,6 +36,11 @@ abstract contract DeployRemoteHopV2 is Script, HopConstants {
     address constant FRAXTAL_HOP = 0x00000000e18aFc20Afe54d4B2C8688bB60c06B36;
     address constant FRAXTAL_MSIG = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
 
+    /// @dev RemoteAdmin's CREATE2 init code includes frxUsdOft, so its address is only uniform across
+    ///      chains onboarded with the deterministic OFT set (Somnia, Robinhood onward).
+    address constant DETERMINISTIC_FRXUSD_OFT = 0x00000000D61733e7A393A10A5B48c311AbE8f1E5;
+    address constant DETERMINISTIC_REMOTE_ADMIN = 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F;
+
     address proxyAdmin;
     address endpoint;
     uint32 localEid;
@@ -82,11 +87,16 @@ abstract contract DeployRemoteHopV2 is Script, HopConstants {
 
         address remoteAdmin = _deployRemoteAdmin(remoteHop);
         console.log("RemoteAdmin deployed at:", remoteAdmin);
+        // deployRemoteHopV2 pins the impl/proxy addresses, but RemoteAdmin was only checked by child
+        // scripts that override _deployRemoteAdmin. Pin it here for every deterministic-OFT chain.
+        if (frxUsdOft == DETERMINISTIC_FRXUSD_OFT) {
+            require(remoteAdmin == DETERMINISTIC_REMOTE_ADMIN, "RemoteAdmin address mismatch");
+        }
 
         // grant Pauser roles to msig signers
         bytes32 PAUSER_ROLE = 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a;
 
-        // RECOVER_ETH_ROLE goes to the chain msig only, matching every live spoke
+        // RECOVER_ETH_ROLE goes to the chain msig and thomas, matching every live spoke
         bytes32 RECOVER_ETH_ROLE = 0xfedd0e52ab05da04684e0bc204015ae57756f9c216de6f3af64eea1589a09b0e;
 
         // sam
@@ -102,8 +112,9 @@ abstract contract DeployRemoteHopV2 is Script, HopConstants {
         // dennis
         RemoteHopV2(payable(remoteHop)).grantRole(PAUSER_ROLE, 0xC6EF452b0de9E95Ccb153c2A5A7a90154aab3419);
 
-        // grant Recover role to the msig and transfer admin role to msig & RemoteAdmin, then renounce from deployer
+        // grant Recover role to the msig & thomas and transfer admin role to msig & RemoteAdmin, then renounce from deployer
         RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, msig);
+        RemoteHopV2(payable(remoteHop)).grantRole(RECOVER_ETH_ROLE, 0x381e2495e683868F693AA5B1414F712f21d34b40);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), msig);
         RemoteHopV2(payable(remoteHop)).grantRole(bytes32(0), remoteAdmin);
         RemoteHopV2(payable(remoteHop)).renounceRole(bytes32(0), msg.sender);

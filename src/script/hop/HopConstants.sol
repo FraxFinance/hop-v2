@@ -23,8 +23,17 @@ contract HopConstants {
     ///      for the minimum gas the compose survives, including tx intrinsic cost):
     ///        EVM-equivalent chains   ~88k   (Polygon ~112k, Sei ~142k, Monad ~151k)
     ///        Tempo                  ~327k   - only 18% margin under 400k
-    ///        ZkSync / Abstract      ~390k   - EraVM metering, effectively no margin under 400k
+    ///        ZkSync                 ~390k   - EraVM metering, effectively no margin under 400k
     ///        Somnia               ~1_470k   - 400k would run out of gas
+    ///      Calls that write a fresh storage slot cost far more where SSTORE (or EraVM pubdata) is
+    ///      repriced. A grantRole, measured the same way on 2026-10-07:
+    ///        EVM-equivalent chains  ~161k   (Polygon ~202k, Monad ~251k)
+    ///        Sei                    ~381k
+    ///        ZkSync                 ~755k   - pubdata-priced, moves with L1 gas
+    ///        Somnia               ~2_594k   (eth_estimateGas; capped eth_call passes at ~1_950k)
+    ///      Every override keeps at least 2x headroom over the costliest of these. Extra compose gas
+    ///      barely moves the quote (+0.4% to +17% on 2026-10-07), while running out strands the
+    ///      compose until someone re-executes it with more gas.
     mapping(uint256 chainId => uint128 composeGas) internal composeGasOverrides;
 
     mapping(uint256 chainId => HopV2Target target) internal hopV2Targets;
@@ -50,18 +59,17 @@ contract HopConstants {
         _addHopV2Target(988, "Stable", defaultHop);
         _addHopV2Target(999, "Hyperliquid", defaultHop);
         _addHopV2Target(1329, "Sei", defaultHop);
-        _addHopV2Target(2741, "Abstract", defaultHop);
         _addHopV2Target(4217, "Tempo", defaultHop);
         _addHopV2Target(4663, "Robinhood", defaultHop);
         _addHopV2Target(5031, "Somnia", defaultHop);
         _addHopV2Target(8453, "Base", defaultHop);
         _addHopV2Target(98_866, "Plume", defaultHop);
         _addHopV2Target(42_161, "Arbitrum", defaultHop);
+        _addHopV2Target(42_220, "Celo", defaultHop);
         _addHopV2Target(43_114, "Avalanche", defaultHop);
         _addHopV2Target(57_073, "Ink", defaultHop);
         _addHopV2Target(59_144, "Linea", defaultHop);
         _addHopV2Target(747_474, "Katana", defaultHop);
-        _addHopV2Target(1_313_161_554, "Aurora", defaultHop);
 
         address commonRemoteAdmin = 0x954286118E93df807aB6f99aE0454f8710f0a8B9;
         _addRemoteAdminRoute(56, 30_102, commonRemoteAdmin); // BSC
@@ -72,12 +80,10 @@ contract HopConstants {
         _addRemoteAdminRoute(143, 30_390, 0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55); // Monad
         _addRemoteAdminRoute(59_144, 30_183, 0xfa803b63DaACCa6CD953061BDBa4E3da6b177447); // Linea
         _addRemoteAdminRoute(8453, 30_184, 0x07dB789aD17573e5169eDEfe14df91CC305715AA); // Base
-        _addRemoteAdminRoute(1_313_161_554, 30_211, commonRemoteAdmin); // Aurora
         _addRemoteAdminRoute(196, 30_274, commonRemoteAdmin); // X-Layer
         _addRemoteAdminRoute(1329, 30_280, commonRemoteAdmin); // Sei
         _addRemoteAdminRoute(480, 30_319, commonRemoteAdmin); // Worldchain
         _addRemoteAdminRoute(130, 30_320, commonRemoteAdmin); // Unichain
-        _addRemoteAdminRoute(2741, 30_324, 0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb); // Abstract
         _addRemoteAdminRoute(146, 30_332, commonRemoteAdmin); // Sonic
         _addRemoteAdminRoute(57_073, 30_339, commonRemoteAdmin); // Ink
         _addRemoteAdminRoute(98_866, 30_370, commonRemoteAdmin); // Plume
@@ -89,11 +95,14 @@ contract HopConstants {
         _addRemoteAdminRoute(4217, 30_410, 0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f); // Tempo
         _addRemoteAdminRoute(4663, 30_416, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Robinhood
         _addRemoteAdminRoute(5031, 30_380, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Somnia
+        _addRemoteAdminRoute(42_220, 30_125, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Celo
 
-        composeGasOverrides[324] = 1_500_000; // ZkSync
-        composeGasOverrides[2741] = 1_500_000; // Abstract
+        composeGasOverrides[137] = 500_000; // Polygon
+        composeGasOverrides[143] = 600_000; // Monad
+        composeGasOverrides[324] = 2_500_000; // ZkSync
+        composeGasOverrides[1329] = 800_000; // Sei
         composeGasOverrides[4217] = 2_500_000; // Tempo
-        composeGasOverrides[5031] = 3_000_000; // Somnia
+        composeGasOverrides[5031] = 6_000_000; // Somnia
     }
 
     /// @notice Compose gas to forward to `chainId` for a RemoteAdmin hop
