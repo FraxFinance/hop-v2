@@ -4,8 +4,11 @@ import { ERC1967Utils } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils
 import { FraxtalHopV201 } from "src/contracts/hop/FraxtalHopV201.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
-import { Script } from "forge-std/Script.sol";
+import { Script, console } from "forge-std/Script.sol";
 import { SafeTx, SafeTxHelper } from "frax-std/SafeTxHelper.sol";
+
+/// @dev version() every implementation deployed by the upgrade scripts must report
+string constant HOP_VERSION = "2.0.2";
 
 abstract contract UpgradeHopV2 is Script {
     using Strings for address;
@@ -34,6 +37,36 @@ abstract contract UpgradeHopV2 is Script {
 
     function deployImplementation() internal virtual {}
 
+    /// @dev Implementations are CREATE2-deployed under a constant salt, so the address follows from the
+    ///      artifact. A contract already at that address is reused, which lets the same script generate
+    ///      the batch on chains where the implementation was deployed earlier or by a replayed tx.
+    ///      The factory is called directly because forge routes a salted `new` through the sender
+    ///      instead of the factory on some chains (Fraxtal), which lands on a different address.
+    function _deployCreate2(bytes32 salt, bytes memory initCode) internal returns (address implementation) {
+        implementation = vm.computeCreate2Address(salt, keccak256(initCode));
+        if (implementation.code.length == 0) {
+            vm.broadcast();
+            (bool ok, bytes memory out) = CREATE2_FACTORY.call(abi.encodePacked(salt, initCode));
+            require(ok && address(bytes20(out)) == implementation, "CREATE2 deploy failed");
+        }
+        _requireImplementation(implementation);
+    }
+
+    function _requireImplementation(address implementation) internal view {
+        require(implementation.code.length != 0, "implementation has no code");
+        (bool ok, bytes memory out) = implementation.staticcall(abi.encodeWithSignature("version()"));
+        require(ok && keccak256(out) == keccak256(abi.encode(HOP_VERSION)), "unexpected implementation version");
+        console.log("implementation:", implementation);
+        console.logBytes32(implementation.codehash);
+    }
+
+    function _hasRole(bytes32 role, address account) internal view returns (bool) {
+        (bool ok, bytes memory out) = hop.staticcall(
+            abi.encodeWithSignature("hasRole(bytes32,address)", role, account)
+        );
+        return ok && out.length == 32 && abi.decode(out, (bool));
+    }
+
     function generateMsigTx() internal virtual {
         if (block.chainid == 1) {
             _generateEthereumTx();
@@ -53,10 +86,10 @@ abstract contract UpgradeHopV2 is Script {
         require(success, "Upgrade failed");
         safeTxs.push(SafeTx({ name: "upgrade", to: proxyAdmin, value: 0, data: data }));
 
-        // grant RECOVER_ROLE to multisig when the target exposes it (HopV201 variants)
+        // grant RECOVER_ETH_ROLE to multisig when the target exposes it (HopV201 variants) and it is not held yet
         bytes32 recoverRole;
         (success, data) = hop.staticcall(abi.encodeWithSignature("RECOVER_ETH_ROLE()"));
-        if (success && data.length == 32) {
+        if (success && data.length == 32 && !_hasRole(abi.decode(data, (bytes32)), msig)) {
             recoverRole = abi.decode(data, (bytes32));
             data = abi.encodeWithSignature("grantRole(bytes32,address)", recoverRole, msig);
             (success, ) = hop.call(data);
@@ -164,6 +197,8 @@ abstract contract UpgradeHopV2 is Script {
     }
 
     function _grantRecoverRoleViaRoleHolder(bytes32 recoverRole, address grantee) internal {
+        if (_hasRole(recoverRole, grantee)) return;
+
         bytes32 defaultAdminRole = 0x0000000000000000000000000000000000000000000000000000000000000000;
 
         (bool ok, bytes memory raw) = hop.staticcall(
