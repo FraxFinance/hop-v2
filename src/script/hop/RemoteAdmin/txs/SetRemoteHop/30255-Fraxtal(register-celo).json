@@ -1,0 +1,17 @@
+{
+  "chainId": 252,
+  "createdAt": 1792991245000,
+  "meta": {
+    "description": "FraxtalHopV2.setRemoteHop(30125, 0x0000006D38568b00B457580b734e0076C62de659): register the Celo RemoteHop so the hub accepts Celo-sourced composes",
+    "name": "Transactions Batch"
+  },
+  "transactions": [
+    {
+      "data": "0xaa662ee300000000000000000000000000000000000000000000000000000000000075ad0000000000000000000000000000006d38568b00b457580b734e0076c62de659",
+      "operation": 0,
+      "to": "0x00000000e18aFc20Afe54d4B2C8688bB60c06B36",
+      "value": "0"
+    }
+  ],
+  "version": "1.0"
+}
