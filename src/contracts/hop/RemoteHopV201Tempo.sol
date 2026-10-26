@@ -6,7 +6,6 @@ import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces
 import { OptionsBuilder } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oapp/libs/OptionsBuilder.sol";
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
-import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 
 import { HopV201Tempo } from "src/contracts/hop/HopV201Tempo.sol";
 import { HopMessage } from "src/contracts/interfaces/IHopV201.sol";
@@ -61,6 +60,14 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
     /// @param _bps Allowance in bps, capped by MAX_FEE_SWAP_SLIPPAGE_BPS. 0 restores the default.
     function setFeeSwapSlippageBps(uint16 _bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _setFeeSwapSlippageBps(_bps);
+    }
+
+    /// @notice Moves this hop's fee token back onto the LayerZero whitelist if LayerZero has delisted it.
+    ///         While the hop is bound to a delisted token the DEX cannot route out of, the quote views
+    ///         revert; one call here, by anyone and with no funds, makes them work again. Does nothing,
+    ///         and returns false, while the hop's fee token is whitelisted.
+    function rebindFeeTokenIfDelisted() external returns (bool rebound) {
+        return _rebindFeeTokenIfDelisted();
     }
 
     /// @notice Send an OFT to a destination with encoded data, paying the LayerZero fee in the
@@ -247,7 +254,7 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
 
         // Always quote the send fee. This spoke path is only reached from sendOFT(). The raw
         // quote stays in endpoint-native units; actual user-token collection happens below.
-        MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
+        MessagingFee memory fee = _quoteSendRebindingIfDelisted(_oft, sendParam, _feeToken);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
         // When dstEid == FRAXTAL_EID the message lands directly on hub; no second hop needed.
@@ -258,7 +265,7 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         // Collect the total fee once, then bind the contract to the resulting payment token so the
         // downstream OFT `_payNative()` path can consume it without performing a second swap.
         address paymentToken = _collectNativeAltToken(fee.nativeFee + hopFeeOnFraxtal, _feeToken, _maxFeeTokenAmount);
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(paymentToken);
+        if (paymentToken != address(0)) _bindFeeToken(paymentToken);
         _approveOftFee(_oft, paymentToken, _amountLD, fee.nativeFee);
 
         // Retain hop-fee revenue on this contract as the collected payment token.
@@ -268,6 +275,23 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
 
         // Return 0 — native msg.value fee handling is bypassed on Tempo.
         return 0;
+    }
+
+    /// @dev The OFT's quote validates THIS contract's FeeManager binding: whatever the previous send paid
+    ///      with, or pathUSD if none was ever set. A send that collects a fee always leaves a whitelisted
+    ///      token bound, so the binding only goes bad if LayerZero has since delisted it -- and if the DEX
+    ///      has no route out of it either, every quote, and so every send, would revert with no admin path
+    ///      to reset it. So when the bound token is no longer whitelisted, bind the token this send pays
+    ///      with before quoting; the send re-binds to the token it collects afterwards anyway. This reads
+    ///      the same whitelist the OFT checks, so it cannot drift from the OFT's error names; any other
+    ///      quote failure reverts with the OFT's own error and leaves the binding alone.
+    function _quoteSendRebindingIfDelisted(
+        address _oft,
+        SendParam memory _sendParam,
+        address _feeToken
+    ) internal returns (MessagingFee memory) {
+        if (!nativeToken.isWhitelistedToken(feeTokenOf(address(this)))) _bindFeeToken(_feeToken);
+        return IOFT(_oft).quoteSend(_sendParam, false);
     }
 
     /// @dev Sets the approvals needed for the OFT to debit the bridged amount and consume its fee from the collected payment token.

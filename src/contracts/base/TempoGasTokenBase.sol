@@ -24,6 +24,7 @@ abstract contract TempoGasTokenBase {
     error NoSwappableWhitelistedToken(address userToken);
     error FeeSwapSlippageTooHigh(uint16 bps);
     error FeeAboveCap(uint256 required, uint256 cap);
+    error NoBindableWhitelistedToken();
 
     /// @notice Emitted when the fee-swap slippage allowance changes.
     event FeeSwapSlippageBpsSet(uint16 bps);
@@ -98,6 +99,33 @@ abstract contract TempoGasTokenBase {
     /// @dev `feeTokenOf(msg.sender)`.
     function _resolveUserToken() internal view returns (address userToken) {
         return feeTokenOf(msg.sender);
+    }
+
+    // ─── Fee-Token Binding ───────────────────────────────────────────────
+
+    /// @dev Binds this contract's own FeeManager fee token, skipping the write when it is already
+    ///      `_token`: a no-op `setUserToken` still costs a full precompile call, a read does not.
+    function _bindFeeToken(address _token) internal {
+        if (StdPrecompiles.TIP_FEE_MANAGER.userTokens(address(this)) != _token) {
+            StdPrecompiles.TIP_FEE_MANAGER.setUserToken(_token);
+        }
+    }
+
+    /// @dev Moves this contract's FeeManager fee token onto the LZ whitelist if LayerZero has delisted it,
+    ///      without collecting anything: the binding is only a preference, so the token need not be held.
+    ///      The OFT's quote validates this binding, and a view cannot change it, so while it points at a
+    ///      delisted token with no DEX route every quote reverts until a state-changing call moves it.
+    ///      Binds the first whitelisted token the FeeManager accepts; the next fee-paying call re-binds to
+    ///      the token it actually collects. Does nothing, and returns false, while the binding is whitelisted.
+    function _rebindFeeTokenIfDelisted() internal returns (bool rebound) {
+        if (nativeToken.isWhitelistedToken(feeTokenOf(address(this)))) return false;
+        address[] memory whitelisted = nativeToken.getWhitelistedTokens();
+        for (uint256 i; i < whitelisted.length; ++i) {
+            try StdPrecompiles.TIP_FEE_MANAGER.setUserToken(whitelisted[i]) {
+                return true;
+            } catch {}
+        }
+        revert NoBindableWhitelistedToken();
     }
 
     // ─── Swap Routing ────────────────────────────────────────────────────
