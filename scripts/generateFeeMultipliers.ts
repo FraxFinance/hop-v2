@@ -125,6 +125,13 @@ const CHAINS: ChainConfig[] = [
     rpcs: ["https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"],
   },
   {
+    name: "Celo",
+    chainId: 42_220,
+    eid: 30_125,
+    executor: "0x1ddbaf8b75f2291a97c22428afef411b7bb19e28",
+    rpcs: ["https://forno.celo.org", "https://celo-rpc.publicnode.com"],
+  },
+  {
     name: "HyperEVM",
     chainId: 999,
     eid: 30_367,
