@@ -17,7 +17,22 @@
  *
  * where both fees come from Executor.getFee() with the same options quoteHop() uses,
  * and both native USD prices come from each chain's LZ PriceFeed (the same oracle the
- * executors price with). DVN and treasury multipliers are left at 1x (10_000).
+ * executors price with).
+ *
+ * The DVN multiplier is derived the same way. quoteHop() prices verification as the local
+ * hop's DVN().getFee(dstEid, 5, hop, "") * numDVNs(), while the Fraxtal leg pays every DVN
+ * in the Fraxtal lockbox's send ULN config for dstEid. Those DVNs price Fraxtal-origin
+ * messages independently (one of them charges a ~$1 floor per message), so the local
+ * estimate can be off by >100x:
+ *
+ *   dvn_multiplier_bps = max( dvnBps,
+ *                             ceil( dvnFee_fraxtal(dst) * FRAXUSD * dvnBufferBps
+ *                                 / (dvnFee_source(dst) * numDVNs * SRCUSD) ) )
+ *
+ * where dvnFee_fraxtal(dst) is the sum of getFee() over the required and optional DVNs of
+ * the most expensive of the five Fraxtal lockboxes. The multiplier never drops below
+ * dvnBps: over-collecting only leaves extra fees on the remote hop, while under-collecting
+ * is paid from the Fraxtal hop's float. The treasury multiplier is left at 1x (10_000).
  *
  * Everything is read on-chain at runtime, so re-running refreshes the values.
  * Re-run whenever LZ pricing or the FRAX price moves materially (or on a schedule).
@@ -26,7 +41,10 @@
  *   npx tsx FeeMultipliers/generateFeeMultipliers.ts [options]
  *     --buffer-bps <n>      safety margin on the executor multiplier (default 10000 = exact,
  *                           e.g. 11000 = +10% to protect the float between refreshes)
- *     --dvn-bps <n>         dvn multiplier for all routes (default 10000)
+ *     --dvn-buffer-bps <n>  safety margin on the derived dvn multiplier (default 12500 = +25%:
+ *                           the Fraxtal floor is additive, so a drop in the local DVN quote
+ *                           between refreshes raises the shortfall)
+ *     --dvn-bps <n>         minimum dvn multiplier for every route (default 10000)
  *     --treasury-bps <n>    treasury multiplier for all routes (default 10000)
  *     --lzreceive-gas <n>   lzReceive gas used in the getFee options (default 300000,
  *                           matching quoteHop()'s default executor options)
@@ -62,6 +80,19 @@ const REMOTE_HOP_SENDER = "0x0000006D38568b00B457580b734e0076C62de659";
 const FRAXTAL_HOP_SENDER = "0x00000000e18aFc20Afe54d4B2C8688bB60c06B36";
 
 const FRAXTAL_EID = 30_255;
+
+/// Fraxtal EndpointV2 and the five lockboxes FraxtalHopV2 sends through
+const FRAXTAL_ENDPOINT = "0x1a44076050125825900e736C501f859c50fE728c";
+const FRAXTAL_LOCKBOXES = [
+  "0xd86fBBd0c8715d2C1f40e451e5C3514e65E7576A", // WFRAX
+  "0x96A394058E2b84A89bac9667B19661Ed003cF5D4", // frxUSD
+  "0x88Aa7854D3b2dAA5e37E7Ce73A1F39669623a361", // sfrxUSD
+  "0x9aBFE1F8a999B0011ecD6116649AEe8D575F5604", // frxETH
+  "0x999dfAbe3b1cc2EF66eB032Eea42FeA329bBa168", // sfrxETH
+];
+
+/// quoteHop() asks the local DVN for 5 confirmations
+const QUOTE_HOP_CONFIRMATIONS = 5n;
 
 interface ChainConfig {
   name: string;
@@ -290,9 +321,39 @@ const SEL_GET_FEE = "0x709eb664"; // getFee(uint32,address,uint256,bytes)
 const SEL_PRICE_FEED = "0x741bef1a"; // priceFeed()
 const SEL_NATIVE_PRICE = "0x92807f58"; // nativeTokenPriceUSD() -> uint128, 1e20 precision
 const SEL_SET_BATCH = "0x4e5b8a9d"; // setFeeMultipliersBatch(uint32[],(uint64,uint64,uint64)[])
+const SEL_GET_SEND_LIBRARY = "0xb96a277f"; // getSendLibrary(address,uint32)
+const SEL_GET_ULN_CONFIG = "0x43ea4fa9"; // getUlnConfig(address,uint32)
+const SEL_DVN_GET_FEE = "0x30bb3aac"; // getFee(uint32,uint64,address,bytes)
+const SEL_HOP_DVN = "0x104db380"; // DVN()
+const SEL_HOP_NUM_DVNS = "0xb218b198"; // numDVNs()
 
 const word = (v: bigint | number): string => BigInt(v).toString(16).padStart(64, "0");
 const addrWord = (a: string): string => a.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+const wordAddr = (w: string): string => "0x" + w.slice(-40);
+
+function encodeAddrEid(selector: string, addr: string, eid: number): string {
+  return selector + addrWord(addr) + word(eid);
+}
+
+/// DVN.getFee(dstEid, confirmations, sender, "") - the empty options both quoteHop() and the ULN pass
+function encodeDvnGetFee(dstEid: number, confirmations: bigint, sender: string): string {
+  return SEL_DVN_GET_FEE + word(dstEid) + word(confirmations) + addrWord(sender) + word(0x80) + word(0);
+}
+
+/// Decode getUlnConfig() => (uint64 confirmations, uint8, uint8, uint8, address[] required, address[] optional)
+function decodeUlnConfig(ret: string): { confirmations: bigint; dvns: string[] } {
+  const hex = ret.replace(/^0x/, "");
+  const at = (byteOffset: number) => hex.slice(byteOffset * 2, byteOffset * 2 + 64);
+  const tuple = Number(BigInt("0x" + at(0)));
+  const confirmations = BigInt("0x" + at(tuple));
+  const readArray = (headSlot: number): string[] => {
+    const start = tuple + Number(BigInt("0x" + at(tuple + headSlot * 32)));
+    const len = Number(BigInt("0x" + at(start)));
+    return Array.from({ length: len }, (_, i) => wordAddr(at(start + 32 + i * 32)));
+  };
+  // The ULN charges every optional DVN too, so both lists count toward the fee.
+  return { confirmations, dvns: [...readArray(4), ...readArray(5)] };
+}
 
 function encodeGetFee(dstEid: number, sender: string, calldataSize: bigint, options: string): string {
   const opts = options.replace(/^0x/, "");
@@ -400,6 +461,17 @@ async function rpcBatch(chain: ChainConfig, calls: { to: string; data: string }[
   throw new Error(`${chain.name}: no RPC answered all ${calls.length} calls (tried ${rpcs.join(", ")})`);
 }
 
+/** rpcBatch in chunks, for call sets larger than an RPC accepts in one batch */
+async function rpcBatchChunked(
+  chain: ChainConfig,
+  calls: { to: string; data: string }[],
+  size = 100,
+): Promise<(string | null)[]> {
+  const out: (string | null)[] = [];
+  for (let i = 0; i < calls.length; i += size) out.push(...(await rpcBatch(chain, calls.slice(i, i + size))));
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -414,6 +486,7 @@ function arg(name: string, dflt: string): string {
 
 async function main() {
   const bufferBps = BigInt(arg("buffer-bps", "10000"));
+  const dvnBufferBps = BigInt(arg("dvn-buffer-bps", "12500"));
   const dvnBps = BigInt(arg("dvn-bps", "10000"));
   const treasuryBps = BigInt(arg("treasury-bps", "10000"));
   const lzReceiveGas = BigInt(arg("lzreceive-gas", DEFAULT_LZRECEIVE_GAS.toString()));
@@ -459,9 +532,45 @@ async function main() {
   });
   console.log(`Fraxtal: FRAX = $${Number(fraxUsd) / 1e20}, ${fraxFee.size}/${allDsts.length} destination fees quoted`);
 
+  // 1b) Fraxtal side: DVN fee (in FRAX wei) for every destination - the sum over the DVNs in
+  //     each lockbox's send ULN config, keeping the most expensive lockbox.
+  const pairs = allDsts.flatMap((d) => FRAXTAL_LOCKBOXES.map((oft) => ({ d, oft })));
+  const libRes = await rpcBatchChunked(
+    fraxtal,
+    pairs.map((p) => ({ to: FRAXTAL_ENDPOINT, data: encodeAddrEid(SEL_GET_SEND_LIBRARY, p.oft, p.d.eid) })),
+  );
+  const cfgRes = await rpcBatchChunked(
+    fraxtal,
+    pairs.map((p, i) => ({
+      to: libRes[i] ? wordAddr(libRes[i]!) : FRAXTAL_ENDPOINT,
+      data: encodeAddrEid(SEL_GET_ULN_CONFIG, p.oft, p.d.eid),
+    })),
+  );
+  const dvnCalls: { pair: number; to: string; data: string }[] = [];
+  pairs.forEach((p, i) => {
+    if (!libRes[i] || !cfgRes[i]) return;
+    const { confirmations, dvns } = decodeUlnConfig(cfgRes[i]!);
+    for (const dvn of dvns) dvnCalls.push({ pair: i, to: dvn, data: encodeDvnGetFee(p.d.eid, confirmations, p.oft) });
+  });
+  const dvnRes = await rpcBatchChunked(fraxtal, dvnCalls);
+  const pairFee: (bigint | null)[] = pairs.map((_, i) => (libRes[i] && cfgRes[i] ? 0n : null));
+  dvnCalls.forEach((c, j) => {
+    const r = dvnRes[j];
+    // A DVN that cannot quote would make the real send revert; drop the whole lockbox.
+    pairFee[c.pair] = r && pairFee[c.pair] !== null ? pairFee[c.pair]! + BigInt(r) : null;
+  });
+  const fraxDvnFee = new Map<number, bigint>(); // eid -> max DVN fee in FRAX wei across lockboxes
+  pairs.forEach((p, i) => {
+    const fee = pairFee[i];
+    if (fee === null) return;
+    if (fee > (fraxDvnFee.get(p.d.eid) ?? -1n)) fraxDvnFee.set(p.d.eid, fee);
+  });
+  console.log(`Fraxtal: ${fraxDvnFee.size}/${allDsts.length} destination DVN fees quoted`);
+
   // 2) Each source chain: local executor fee for every destination + native USD price
   const summary: string[] = [
-    "source,dstEid,dst,srcExecFeeNative,srcExecFeeUSD,fraxtalExecFeeFRAX,fraxtalExecFeeUSD,executorMultiplierBps,multiplierX",
+    "source,dstEid,dst,srcExecFeeNative,srcExecFeeUSD,fraxtalExecFeeFRAX,fraxtalExecFeeUSD,executorMultiplierBps,multiplierX," +
+      "srcDvnFeeUSD,fraxtalDvnFeeFRAX,fraxtalDvnFeeUSD,dvnMultiplierBps,dvnMultiplierX",
   ];
   await fs.mkdir(outDir, { recursive: true });
 
@@ -484,6 +593,19 @@ async function main() {
       if (!priceRes) throw new Error(`nativeTokenPriceUSD() returned nothing from price feed ${priceFeed}`);
       const srcUsd = BigInt(priceRes); // 1e20 precision
       if (srcUsd === 0n) throw new Error(`price feed ${priceFeed} reports the native token at $0`);
+
+      // Local DVN estimate quoteHop() uses: DVN().getFee(dst, 5, hop, "") * numDVNs()
+      const [dvnWord, numDvnsWord] = await rpcBatch(src, [
+        { to: REMOTE_HOP_SENDER, data: SEL_HOP_DVN },
+        { to: REMOTE_HOP_SENDER, data: SEL_HOP_NUM_DVNS },
+      ]);
+      if (!dvnWord || !numDvnsWord) throw new Error(`RemoteHop ${REMOTE_HOP_SENDER} DVN()/numDVNs() returned nothing`);
+      const srcDvn = wordAddr(dvnWord);
+      const numDvns = BigInt(numDvnsWord);
+      const srcDvnRes = await rpcBatch(
+        src,
+        dsts.map((d) => ({ to: srcDvn, data: encodeDvnGetFee(d.eid, QUOTE_HOP_CONFIRMATIONS, REMOTE_HOP_SENDER) })),
+      );
 
       const eids: number[] = [];
       const mults: FeeMultipliers[] = [];
@@ -513,8 +635,30 @@ async function main() {
         const den = sFee * srcUsd * 10n ** 18n;
         let m = (num + den - 1n) / den;
         if (m < 1n) m = 1n; // 0 means "unset = 1x" in the contract, never emit it
+
+        // dvn multiplier = max(dvnBps, ceil(fraxtalDvnFeeUSD * dvnBuffer / (srcDvnFee * numDVNs * SRCUSD)))
+        const fDvn = fraxDvnFee.get(d.eid);
+        const sDvn = srcDvnRes[i] ? BigInt(srcDvnRes[i]!) * numDvns : 0n;
+        let dm = dvnBps;
+        if (fDvn === undefined) {
+          console.warn(
+            `  WARN ${src.name} -> ${d.name} (eid ${d.eid}): Fraxtal DVN fee unknown, dvn left at ${dvnBps}`,
+          );
+        } else if (sDvn === 0n) {
+          if (fDvn > 0n)
+            console.warn(
+              `  WARN ${src.name} -> ${d.name} (eid ${d.eid}): local DVN quoted zero, ` +
+                `no multiplier can recover the Fraxtal DVN fee of ${(Number(fDvn) / 1e18).toFixed(4)} FRAX`,
+            );
+        } else {
+          const dNum = fDvn * fraxUsd * dvnBufferBps * 10n ** dec;
+          const dDen = sDvn * srcUsd * 10n ** 18n;
+          const derived = (dNum + dDen - 1n) / dDen;
+          if (derived > dm) dm = derived;
+        }
+        if (dm < 1n) dm = 1n;
         eids.push(d.eid);
-        mults.push({ dvn: dvnBps, executor: m, treasury: treasuryBps });
+        mults.push({ dvn: dm, executor: m, treasury: treasuryBps });
         summary.push(
           [
             src.name,
@@ -526,6 +670,11 @@ async function main() {
             ((Number(fFee) / 1e18) * (Number(fraxUsd) / 1e20)).toFixed(6),
             m.toString(),
             (Number(m) / 10_000).toFixed(2),
+            ((Number(sDvn) / 10 ** (src.nativeDecimals ?? 18)) * (Number(srcUsd) / 1e20)).toFixed(6),
+            fDvn === undefined ? "" : (Number(fDvn) / 1e18).toFixed(6),
+            fDvn === undefined ? "" : ((Number(fDvn) / 1e18) * (Number(fraxUsd) / 1e20)).toFixed(6),
+            dm.toString(),
+            (Number(dm) / 10_000).toFixed(2),
           ].join(","),
         );
       }
@@ -542,6 +691,7 @@ async function main() {
         generatedAt: new Date().toISOString(),
         params: {
           bufferBps: bufferBps.toString(),
+          dvnBufferBps: dvnBufferBps.toString(),
           dvnBps: dvnBps.toString(),
           treasuryBps: treasuryBps.toString(),
           lzReceiveGas: lzReceiveGas.toString(),
@@ -561,9 +711,11 @@ async function main() {
       const top = [...mults]
         .map((m, i) => ({ e: eids[i], x: Number(m.executor) / 10_000 }))
         .sort((a, b) => b.x - a.x)[0];
+      const topDvn = [...mults].map((m, i) => ({ e: eids[i], x: Number(m.dvn) / 10_000 })).sort((a, b) => b.x - a.x)[0];
       console.log(
         `${src.name.padEnd(11)} native=$${(Number(srcUsd) / 1e20).toFixed(4)} routes=${eids.length}` +
           ` maxExecMult=${top.x.toFixed(1)}x (eid ${top.e})` +
+          ` maxDvnMult=${topDvn.x.toFixed(1)}x (eid ${topDvn.e})` +
           (src.warn ? `  !! ${src.warn}` : ""),
       );
     } catch (e) {
