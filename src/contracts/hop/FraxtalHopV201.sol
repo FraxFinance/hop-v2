@@ -93,6 +93,11 @@ contract FraxtalHopV201 is HopV201, IOAppComposer {
             hopMessage.sender = OFTComposeMsgCodec.composeFrom(_message);
         }
 
+        // Checked for every message, trusted or not: a spoke without the source-side check, or any other
+        // composer, can deliver a recipient that narrows to address(0). Forwarding it would strand or burn the
+        // funds on the destination, so refuse while they are still on the hub; the compose stays retryable.
+        if (address(uint160(uint256(hopMessage.recipient))) == address(0)) revert ZeroRecipient();
+
         if (hopMessage.dstEid == FRAXTAL_EID) {
             _sendLocal({ _oft: _oft, _amount: amountLD, _hopMessage: hopMessage });
         } else {

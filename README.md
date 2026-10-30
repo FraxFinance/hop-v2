@@ -560,7 +560,7 @@ bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 | `setNumDVNs(n)` | `DEFAULT_ADMIN_ROLE` | Set DVN count for fee |
 | `setHopFee(fee)` | `DEFAULT_ADMIN_ROLE` | Set service fee (10_000 based) |
 | `setExecutorOptions(eid, opts)` | `DEFAULT_ADMIN_ROLE` | Set per-chain executor options |
-| `setMessageProcessed(...)` | `DEFAULT_ADMIN_ROLE` | Manually mark message processed |
+| `setMessageProcessed(...)` | `DEFAULT_ADMIN_ROLE` | Retire a compose so it executes without paying out. V201 takes `(oft, guid, index, message)` and accepts only a compose the endpoint still holds as pending ([§6.7](#67-pending-composes-and-admin-changes)) |
 | `recover(target, value, data)` | `DEFAULT_ADMIN_ROLE` | Emergency fund recovery |
 
 #### Key Events
@@ -580,6 +580,11 @@ error NotAuthorized();    // Caller lacks required role
 error InsufficientFee();  // msg.value < required fee
 error RefundFailed();     // ETH refund call failed
 ```
+
+`HopV201`, the implementation behind every deployed proxy, adds `ZeroRecipient()`: `sendOFT` and `quote` revert when
+the recipient narrows to `address(0)`, and the hub's `lzCompose` reverts before routing such a message, so the compose
+stays queued at the endpoint and the funds stay on the hub for admin recovery (`recoverERC20` + `setMessageProcessed`,
+[§6.7](#67-pending-composes-and-admin-changes)). It also adds `RecoverFailed()`, `LengthMismatch()` and `ComposeNotPending()`.
 
 #### Fee Calculation (`quoteHop`)
 
@@ -660,6 +665,8 @@ lzCompose(oft, guid, message, executor, executorData)
     ├─ if !isTrusted:
     │    overwrite hopMessage.srcEid with OFTComposeMsgCodec.srcEid()
     │    overwrite hopMessage.sender  with OFTComposeMsgCodec.composeFrom()
+    │
+    ├─ recipient narrows to address(0)?        (ZeroRecipient, V201: compose stays queued, funds stay on the hub)
     │
     ├─ if hopMessage.dstEid == FRAXTAL_EID:
     │    _sendLocal(oft, amount, hopMessage)
@@ -1054,7 +1061,12 @@ if ($.messageProcessed[messageHash]) return (isTrusted, true);  // skip duplicat
 $.messageProcessed[messageHash] = true;
 ```
 
-Administrators can manually mark a hash processed via `setMessageProcessed()` to handle edge cases.
+Administrators can retire a compose with `setMessageProcessed()`: when the compose later executes, the hop takes the
+duplicate return above and moves no funds. In V201 the function takes the queued message itself,
+`setMessageProcessed(oft, guid, index, message)`, reverts `ComposeNotPending()` unless the endpoint's compose queue
+holds exactly that message as pending for this hop, and derives the key from it. A mark therefore cannot pre-empt a
+future message or hit a mistyped tuple. HopV2 takes the four key fields directly and checks nothing. See
+[§6.7](#67-pending-composes-and-admin-changes) for when to use it.
 
 ### 6.3 Access Control
 
@@ -1066,7 +1078,7 @@ DEFAULT_ADMIN_ROLE
   ├─ setHopFee()              Service fee
   ├─ setExecutorOptions()     Per-chain gas options
   ├─ pauseOff()               Resume (admin only, not pauser)
-  ├─ setMessageProcessed()    Manual replay mark
+  ├─ setMessageProcessed()    Retire a pending compose (§6.7)
   └─ recover()                Emergency fund recovery
 
 PAUSER_ROLE
@@ -1091,6 +1103,65 @@ if (msg.value > sendFee) {
     if (!success) revert RefundFailed();
 }
 ```
+
+### 6.7 Pending Composes and Admin Changes
+
+A composed transfer settles in two transactions. The destination OFT credits the hop and queues the compose at the
+endpoint; the executor calls `lzCompose` later, and retries or gives up if it reverts. In between, the hop holds the
+principal. The hop keeps no record of it: the only record is the endpoint's compose queue, where a pending entry holds
+the message hash and a delivered one holds `0x…01`.
+
+These admin calls act on that window:
+
+| Admin call | Effect on a pending compose | Undone by |
+|---|---|---|
+| `recoverERC20(token, …)` of a bridged OFT token | the compose reverts on the transfer once the balance is short | returning the tokens, then a retry |
+| `pauseOn()` | the compose reverts `HopPaused()` | `pauseOff()`, then a retry |
+| `setApprovedOft(oft, false)` | the compose reverts `InvalidOFT()` | re-approving, then a retry |
+| `setRemoteHop(eid, newHop)` | messages composed by the old hop arrive untrusted: `srcEid` and `sender` are overwritten, and a composer that authenticates them reverts | restoring the old hop, a retry, then setting the new one |
+| `setMessageProcessed(…)` | the compose returns without paying out | nothing: the user is compensated by the Safe |
+
+Hop fee revenue is native on every chain except Tempo, where it accrues in the fee tokens (pathUSD, USDT0). Sweeping
+revenue never touches a pending compose; recovering a bridged OFT token always might. Pausing stays the immediate
+emergency action: pause first, reconcile afterwards.
+
+**Before a planned change** (recovering an OFT token, de-approving an OFT, rotating a remote hop):
+
+1. List what is pending. The script reads the endpoint from the hop and checks each queued compose against the queue:
+
+   ```bash
+   pnpm pending-composes --rpc <rpc> --hop <hop> --from-block <block the hop was deployed in>
+   ```
+
+   No output and exit 0 means nothing is pending. `--chunk` sets the log range per request (default 100000, the
+   Tempo RPC limit); `--json` prints machine-readable output.
+2. If something is pending, let it settle or retry it before the change. For a hop rotation, first stop new sends
+   from the old hop (pause it on its own chain), let the queue drain, then rotate.
+
+**Retrying a compose.** Anyone can execute a pending compose through the endpoint, with the values the script prints:
+
+```bash
+cast send <endpoint> "lzCompose(address,address,bytes32,uint16,bytes,bytes)" \
+  <oft> <hop> <guid> <index> <message> 0x --gas-limit <gas>
+```
+
+On the hub, a forwarded compose pays its next-leg LayerZero fee from the hub's native balance, so keep it funded and
+give the call enough gas for the forward leg.
+
+**Retiring a compose that can never succeed.** In this order, so the recovered funds can never also be paid out:
+
+1. `setMessageProcessed(oft, guid, index, message)`. It reverts `ComposeNotPending()` unless the endpoint holds
+   exactly that message as pending for the hop.
+2. Optionally close the queue entry by executing the compose through the endpoint as above: the hop takes the
+   duplicate return and the endpoint marks it delivered. The hop must be unpaused and the OFT approved, because both
+   checks run before the duplicate check.
+3. `recoverERC20(token, amountLD)`, which pays the calling admin.
+4. The Safe pays the user. `composeFrom` in the message is a hop, not the user: take the payee from the `SendOFT`
+   event of the transaction that started the transfer on the source chain (find it on LayerZero Scan by GUID).
+
+Implementations before 2.0.2 take `setMessageProcessed(oft, srcEid, nonce, composeFrom)` and check nothing. Until
+2.0.2 is live, read those four values from the script output for a compose it lists as pending, and do not sign a
+mark for anything else.
 
 ---
 

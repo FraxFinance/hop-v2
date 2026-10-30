@@ -57,7 +57,7 @@ interface IHopV201 {
     function setRemoteHop(uint32 _eid, bytes32 _remoteHop) external;
     function recoverERC20(address _tokenAddress, uint256 _tokenAmount) external;
     function recoverETH(uint256 _ethAmount) external;
-    function setMessageProcessed(address _oft, uint32 _srcEid, uint64 _nonce, bytes32 _composeFrom) external;
+    function setMessageProcessed(address _oft, bytes32 _guid, uint16 _index, bytes calldata _message) external;
 
     // Storage views
     function localEid() external view returns (uint32);

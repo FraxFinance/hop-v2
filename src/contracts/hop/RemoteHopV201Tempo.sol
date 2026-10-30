@@ -6,7 +6,6 @@ import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces
 import { OptionsBuilder } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oapp/libs/OptionsBuilder.sol";
 import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { ITIP20 } from "@tempo/interfaces/ITIP20.sol";
-import { StdPrecompiles } from "tempo-std/StdPrecompiles.sol";
 
 import { HopV201Tempo } from "src/contracts/hop/HopV201Tempo.sol";
 import { HopMessage } from "src/contracts/interfaces/IHopV201.sol";
@@ -37,6 +36,8 @@ import { TempoGasTokenBase } from "src/contracts/base/TempoGasTokenBase.sol";
 contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
     event Hop(address oft, address indexed recipient, uint256 amount);
 
+    error InvalidFeeToken();
+
     constructor(address _endpoint) TempoGasTokenBase(_endpoint) {
         _disableInitializers();
     }
@@ -55,10 +56,26 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         _setRemoteHop(FRAXTAL_EID, _fraxtalHop);
     }
 
-    /// @notice Send an OFT to a destination with encoded data
-    /// @dev Inlines base HopV201Tempo.sendOFT logic to:
-    ///      1. Reject native ETH (Tempo uses TIP20 gas via EndpointV2Alt)
-    ///      2. Skip _handleMsgValue (no native ETH fee handling on Tempo)
+    /// @notice Set the slippage allowance applied to a DEX-routed fee swap, in basis points.
+    /// @param _bps Allowance in bps, capped by MAX_FEE_SWAP_SLIPPAGE_BPS. 0 restores the default.
+    function setFeeSwapSlippageBps(uint16 _bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setFeeSwapSlippageBps(_bps);
+    }
+
+    /// @notice Moves this hop's fee token back onto the LayerZero whitelist if LayerZero has delisted it.
+    ///         While the hop is bound to a delisted token the DEX cannot route out of, the quote views
+    ///         revert; one call here, by anyone and with no funds, makes them work again. Does nothing,
+    ///         and returns false, while the hop's fee token is whitelisted.
+    function rebindFeeTokenIfDelisted() external returns (bool rebound) {
+        return _rebindFeeTokenIfDelisted();
+    }
+
+    /// @notice Send an OFT to a destination with encoded data, paying the LayerZero fee in the
+    ///         caller's FeeManager fee token (`feeTokenOf(msg.sender)`) with no ceiling other than
+    ///         their allowance.
+    /// @dev The HopV2 interface every spoke shares, kept for the callers already on it; it is the
+    ///      eight-argument `sendOFT` with `feeTokenOf(msg.sender)` and no cap. New integrations
+    ///      should call that form directly so the debit is bounded.
     function sendOFT(
         address _oft,
         uint32 _dstEid,
@@ -67,23 +84,50 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         uint128 _dstGas,
         bytes memory _data
     ) public payable override {
+        sendOFT(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data, _resolveUserToken(), type(uint256).max);
+    }
+
+    /// @notice Send an OFT to a destination with encoded data, naming the TIP20 the LayerZero fee
+    ///         is pulled in and capping that debit — the Tempo equivalent of the `msg.value`
+    ///         ceiling on native chains.
+    /// @dev Inlines base HopV201Tempo.sendOFT logic to:
+    ///      1. Reject native ETH (Tempo uses TIP20 gas via EndpointV2Alt)
+    ///      2. Skip _handleMsgValue (no native ETH fee handling on Tempo)
+    ///      3. Collect the fee in `_feeToken`, bounded by `_maxFeeTokenAmount`
+    /// @param _feeToken TIP20 to pay the fee in. Pulled 1:1 when LZEndpointDollar whitelists it,
+    ///        otherwise swapped on the StablecoinDEX; independent of the caller's FeeManager token.
+    /// @param _maxFeeTokenAmount Reverts `FeeAboveCap` — the whole call, nothing is kept — if the
+    ///        fee in `_feeToken`, as `quoteStatic(..., _feeToken)` reports it at execution, exceeds
+    ///        this. Pass that quote: on the DEX-routed path it carries the swap headroom, and the
+    ///        part the swap does not consume is refunded in the same call.
+    function sendOFT(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD,
+        uint128 _dstGas,
+        bytes memory _data,
+        address _feeToken,
+        uint256 _maxFeeTokenAmount
+    ) public payable {
         // EndpointV2Alt uses TIP20 for gas, not native ETH
         if (msg.value > 0) revert OFTAltCore__msg_value_not_zero(msg.value);
+        if (_feeToken == address(0)) revert InvalidFeeToken();
+
+        // Reject a recipient that truncates to the zero address: the send would be
+        // accepted here and then burn or strand the tokens on the destination, where
+        // only an admin could recover them. Checked on the narrowed address so a
+        // bytes32 with non-zero upper bits is caught too, and before any token is
+        // pulled so the caller keeps their funds.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
 
         // --- Inlined from HopV201Tempo.sendOFT (skips _handleMsgValue) ---
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();
         if (!$.approvedOft[_oft]) revert InvalidOFT();
 
-        // generate hop message
-        HopMessage memory hopMessage = HopMessage({
-            srcEid: $.localEid,
-            dstEid: _dstEid,
-            dstGas: _dstGas,
-            sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _recipient,
-            data: _data
-        });
+        // generate hop message (built in a helper so the eight-argument frame stays small)
+        HopMessage memory hopMessage = _buildHopMessage(_dstEid, _recipient, _dstGas, _data);
 
         // Transfer the OFT token to the hop. Clean off dust for the sender that would otherwise be lost through LZ.
         _amountLD = removeDust(_oft, _amountLD);
@@ -93,12 +137,29 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
             // Sending from src => src - no LZ send needed
             _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
         } else {
-            _sendToDestination(_oft, _amountLD, true, hopMessage);
+            _sendToDestinationTempo(_oft, _amountLD, hopMessage, _feeToken, _maxFeeTokenAmount);
         }
 
         // No _handleMsgValue: Tempo bypasses native msg.value fee handling.
 
         emit SendOFT(_oft, msg.sender, _dstEid, _recipient, _amountLD);
+    }
+
+    function _buildHopMessage(
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint128 _dstGas,
+        bytes memory _data
+    ) internal view returns (HopMessage memory) {
+        return
+            HopMessage({
+                srcEid: localEid(),
+                dstEid: _dstEid,
+                dstGas: _dstGas,
+                sender: bytes32(uint256(uint160(msg.sender))),
+                recipient: _recipient,
+                data: _data
+            });
     }
 
     /// @notice Override quote to return fees in native-LZ units.
@@ -137,6 +198,8 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         uint128 _dstGas,
         bytes memory _data
     ) internal view returns (uint256) {
+        // Same recipient check as sendOFT, applied here so quote and quoteStatic both fail closed.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
         uint32 localEid_ = localEid();
         if (_dstEid == localEid_) return 0;
 
@@ -161,8 +224,9 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         return fee.nativeFee + hopFeeOnFraxtal;
     }
 
-    /// @dev Override to let the OFT pay its endpoint fee in TIP20 via EndpointV2Alt.
-    ///      The hop collects endpoint and protocol fees once, then retains the protocol fee as the collected payment token.
+    /// @dev HopV201Tempo's hook. Only the Tempo `sendOFT` reaches the spoke path and it calls
+    ///      `_sendToDestinationTempo` directly; this override exists so the base's native-value
+    ///      path can never run, and routes like the six-argument send if it ever is reached.
     function _sendToDestination(
         address _oft,
         uint256 _amountLD,
@@ -170,15 +234,27 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
         /*_isTrustedHopMessage*/
         HopMessage memory _hopMessage
     ) internal override returns (uint256) {
+        return _sendToDestinationTempo(_oft, _amountLD, _hopMessage, _resolveUserToken(), type(uint256).max);
+    }
+
+    /// @dev Lets the OFT pay its endpoint fee in TIP20 via EndpointV2Alt. The hop collects endpoint and
+    ///      protocol fees once, in `_feeToken` and bounded by `_maxFeeTokenAmount`, then retains the
+    ///      protocol fee as the collected payment token.
+    function _sendToDestinationTempo(
+        address _oft,
+        uint256 _amountLD,
+        HopMessage memory _hopMessage,
+        address _feeToken,
+        uint256 _maxFeeTokenAmount
+    ) internal returns (uint256) {
         HopV2Storage storage $ = _getHopV2Storage();
 
         // Generate sendParam (always targets Fraxtal hub)
         SendParam memory sendParam = _generateSendParam({ _amountLD: _amountLD, _hopMessage: _hopMessage });
 
-        // Always quote the send fee. This spoke path is only reached from sendOFT(), so
-        // the ignored trusted-hop flag is intentional here. The raw quote stays in
-        // endpoint-native units; actual user-token collection happens below.
-        MessagingFee memory fee = IOFT(_oft).quoteSend(sendParam, false);
+        // Always quote the send fee. This spoke path is only reached from sendOFT(). The raw
+        // quote stays in endpoint-native units; actual user-token collection happens below.
+        MessagingFee memory fee = _quoteSendRebindingIfDelisted(_oft, sendParam, _feeToken);
 
         // Account for hop fee if multi-hop (Tempo → Fraxtal → final dest).
         // When dstEid == FRAXTAL_EID the message lands directly on hub; no second hop needed.
@@ -188,8 +264,8 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
 
         // Collect the total fee once, then bind the contract to the resulting payment token so the
         // downstream OFT `_payNative()` path can consume it without performing a second swap.
-        address paymentToken = _collectNativeAltToken(fee.nativeFee + hopFeeOnFraxtal);
-        StdPrecompiles.TIP_FEE_MANAGER.setUserToken(paymentToken);
+        address paymentToken = _collectNativeAltToken(fee.nativeFee + hopFeeOnFraxtal, _feeToken, _maxFeeTokenAmount);
+        if (paymentToken != address(0)) _bindFeeToken(paymentToken);
         _approveOftFee(_oft, paymentToken, _amountLD, fee.nativeFee);
 
         // Retain hop-fee revenue on this contract as the collected payment token.
@@ -199,6 +275,23 @@ contract RemoteHopV201Tempo is HopV201Tempo, TempoGasTokenBase, IOAppComposer {
 
         // Return 0 — native msg.value fee handling is bypassed on Tempo.
         return 0;
+    }
+
+    /// @dev The OFT's quote validates THIS contract's FeeManager binding: whatever the previous send paid
+    ///      with, or pathUSD if none was ever set. A send that collects a fee always leaves a whitelisted
+    ///      token bound, so the binding only goes bad if LayerZero has since delisted it -- and if the DEX
+    ///      has no route out of it either, every quote, and so every send, would revert with no admin path
+    ///      to reset it. So when the bound token is no longer whitelisted, bind the token this send pays
+    ///      with before quoting; the send re-binds to the token it collects afterwards anyway. This reads
+    ///      the same whitelist the OFT checks, so it cannot drift from the OFT's error names; any other
+    ///      quote failure reverts with the OFT's own error and leaves the binding alone.
+    function _quoteSendRebindingIfDelisted(
+        address _oft,
+        SendParam memory _sendParam,
+        address _feeToken
+    ) internal returns (MessagingFee memory) {
+        if (!nativeToken.isWhitelistedToken(feeTokenOf(address(this)))) _bindFeeToken(_feeToken);
+        return IOFT(_oft).quoteSend(_sendParam, false);
     }
 
     /// @dev Sets the approvals needed for the OFT to debit the bridged amount and consume its fee from the collected payment token.
