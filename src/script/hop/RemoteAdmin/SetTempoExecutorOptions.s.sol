@@ -5,6 +5,7 @@ import { SetExecutorOptionsBase } from "./SetExecutorOptionsBase.s.sol";
 import { IHopV2 } from "src/contracts/interfaces/IHopV2.sol";
 
 // forge script src/script/hop/RemoteAdmin/SetTempoExecutorOptions.s.sol --rpc-url https://rpc.frax.com --ffi
+// CHAIN_IDS=137,143,988,5031,98866 forge script src/script/hop/RemoteAdmin/SetTempoExecutorOptions.s.sol --rpc-url https://rpc.frax.com --ffi
 contract SetTempoExecutorOptions is SetExecutorOptionsBase {
     uint32 public constant TEMPO_EID = 30_410;
     uint128 public constant TEMPO_RECEIVE_GAS = 2_500_000;
