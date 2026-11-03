@@ -62,7 +62,6 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
     address public constant FRAXTAL_MSIG = 0x5f25218ed9474b721d6a38c115107428E832fA2E;
     address public constant FRXUSD_LOCKBOX = 0x96A394058E2b84A89bac9667B19661Ed003cF5D4;
     uint32 public constant FRAXTAL_EID = 30_255;
-    uint128 public constant COMPOSE_GAS = 400_000;
 
     function run() external {
         string memory inputDir = _inputDir();
@@ -109,6 +108,9 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
 
             // compose data = abi.encode(remoteHop, setFeeMultipliersBatch calldata)
             bytes memory composeData = abi.encode(target.hop, batchCalldata);
+            // Gas the destination compose runs with. Chains with non-EVM gas metering need more
+            // than the 400k default - see composeGasOverrides in HopConstants.
+            uint128 composeGas = _composeGasFor(route.chainId);
 
             // Quote the Fraxtal-leg fee. Some pathways are configured with
             // BlockedMessageLib as the send library (Fraxtal => Scroll / Mode /
@@ -124,7 +126,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
                     _dstEid: route.eid,
                     _recipient: bytes32(uint256(uint160(remoteAdmin))),
                     _amountLD: 0,
-                    _dstGas: COMPOSE_GAS,
+                    _dstGas: composeGas,
                     _data: composeData
                 })
             returns (uint256 q) {
@@ -143,7 +145,7 @@ contract BuildSetFeeMultipliers is Script, HopConstants {
                 route.eid,
                 bytes32(uint256(uint160(remoteAdmin))),
                 uint256(0),
-                COMPOSE_GAS,
+                composeGas,
                 composeData
             );
 

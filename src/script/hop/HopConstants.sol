@@ -31,6 +31,12 @@ contract HopConstants {
     ///        Sei                    ~381k
     ///        ZkSync                 ~755k   - pubdata-priced, moves with L1 gas
     ///        Somnia               ~2_594k   (eth_estimateGas; capped eth_call passes at ~1_950k)
+    ///      A 24-route setFeeMultipliersBatch that adds one destination, eth_estimateGas on the live
+    ///      replay of 2026-10-29 (gas used in parentheses):
+    ///        Monad                  ~530k
+    ///        Tempo                  ~791k   (744k)
+    ///        ZkSync               ~2_407k   (1_529k)
+    ///        Somnia               ~2_960k   (1_307k)
     ///      Every override keeps at least 2x headroom over the costliest of these. Extra compose gas
     ///      barely moves the quote (+0.4% to +17% on 2026-10-07), while running out strands the
     ///      compose until someone re-executes it with more gas.
@@ -98,8 +104,8 @@ contract HopConstants {
         _addRemoteAdminRoute(42_220, 30_125, 0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F); // Celo
 
         composeGasOverrides[137] = 500_000; // Polygon
-        composeGasOverrides[143] = 600_000; // Monad
-        composeGasOverrides[324] = 2_500_000; // ZkSync
+        composeGasOverrides[143] = 1_100_000; // Monad
+        composeGasOverrides[324] = 5_000_000; // ZkSync
         composeGasOverrides[1329] = 800_000; // Sei
         composeGasOverrides[4217] = 2_500_000; // Tempo
         composeGasOverrides[5031] = 6_000_000; // Somnia
