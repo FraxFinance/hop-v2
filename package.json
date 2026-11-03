@@ -14,6 +14,7 @@
     "format": "forge fmt src && prettier --config ./.prettierrc.json --write src && forge fmt test && prettier --config ./.prettierrc.json --write test",
     "generate:constants": "ts-node -T scripts/generateConstants.ts",
     "generate:fee-multipliers": "ts-node -T scripts/generateFeeMultipliers.ts",
+    "pending-composes": "ts-node -T scripts/pendingComposes.ts",
     "deploy:mainnet": "forge script src/script{$ENTER_SCRIPT_FILE_HERE} --rpc-url $MAINNET_RPC_URL -vvvv --broadcast --verify --slow",
     "deploy:polygon": "forge script src/script{$ENTER_SCRIPT_FILE_HERE} --rpc-url $POLYGON_RPC_URL -vvvv --broadcast --verify --slow"
   },
@@ -37,7 +38,7 @@
   },
   "dependencies": {
     "@fraxfinance/frax-oft-upgradeable": "github:FraxFinance/frax-oft-upgradeable#de9f494e342975d2dbdc19619897115517efd724",
-    "@fraxfinance/layerzero-v2-upgradeable": "github:fraxfinance/LayerZero-v2-upgradeable",
+    "@fraxfinance/layerzero-v2-upgradeable": "github:fraxfinance/LayerZero-v2-upgradeable#004f9ad064cc7eab45e57a9b5b004b30bec8e238",
     "@layerzerolabs/lz-evm-messagelib-v2": "^3.0.115",
     "@layerzerolabs/lz-evm-v1-0.7": "^3.0.115",
     "@layerzerolabs/lz-v2-utilities": "^3.0.115",
@@ -51,7 +52,6 @@
     "forge-std": "github:foundry-rs/forge-std#60acb7aaadcce2d68e52986a0a66fe79f07d138f",
     "frax-standard-solidity": "github:FraxFinance/frax-standard-solidity#v1.1.2",
     "solidity-bytes-utils": "github:GNSPS/solidity-bytes-utils",
-    "tempo": "github:tempoxyz/tempo#v1.0.2",
     "tempoxyz/tempo-std": "github:tempoxyz/tempo-std",
     "viem": "^2.46.3"
   }

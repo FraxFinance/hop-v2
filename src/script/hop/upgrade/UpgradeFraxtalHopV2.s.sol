@@ -1,4 +1,4 @@
-pragma solidity ^0.8.0;
+pragma solidity 0.8.23;
 
 import { UpgradeHopV2 } from "src/script/hop/upgrade/UpgradeHopV2.sol";
 import { FraxtalHopV201 } from "src/contracts/hop/FraxtalHopV201.sol";
@@ -10,14 +10,9 @@ contract UpgradeFraxtalHopV2 is UpgradeHopV2 {
         super.setUp();
     }
 
+    bytes32 internal constant SALT = 0x4e59b44847b379578588920ca78fbf26c0b4956cada2dc35a2676e8544030084;
+
     function deployImplementation() internal virtual override {
-        vm.startBroadcast();
-
-        newImplementation = address(
-            new FraxtalHopV201{ salt: 0x4e59b44847b379578588920ca78fbf26c0b4956cada2dc35a2676e8544030084 }()
-        );
-        require(newImplementation == 0x00000000d25B8809150b59ce5dAE5699FfD26485, "Unexpected implementation address");
-
-        vm.stopBroadcast();
+        newImplementation = _deployCreate2(SALT, type(FraxtalHopV201).creationCode);
     }
 }
