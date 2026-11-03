@@ -127,7 +127,21 @@ abstract contract UpgradeHopV2 is Script {
         require(ok, "Timelock admin() call failed");
         address governor = abi.decode(raw, (address)); // 0xfFFffF...
 
-        // --- File 1: queue the upgrade (sign now, eta = now + 1 day) ---
+        // queueTransaction requires eta >= block.timestamp + delay when the queue tx executes, not when
+        // this file is generated, so leave room for signing. TIMELOCK_ETA pins an absolute eta, to pair
+        // this queue with another batch on the same timelock.
+        (ok, raw) = timelock.staticcall(abi.encodeWithSignature("delay()"));
+        require(ok, "Timelock delay() call failed");
+        uint256 delay = abi.decode(raw, (uint256));
+        uint256 eta = vm.envOr(
+            "TIMELOCK_ETA",
+            block.timestamp + delay + vm.envOr("TIMELOCK_ETA_MARGIN", uint256(3 days))
+        );
+        require(eta >= block.timestamp + delay, "eta below timelock delay");
+        console.log("timelock eta:", eta);
+        console.log("queue must execute before:", eta - delay);
+
+        // --- File 1: queue the upgrade (sign now) ---
         vm.startPrank(governor);
 
         bytes memory upgradeCalldata = abi.encodeWithSignature(
@@ -143,7 +157,7 @@ abstract contract UpgradeHopV2 is Script {
             0,
             "",
             upgradeCalldata,
-            block.timestamp + 1 days // timelock delay is 1 day on-chain
+            eta
         );
         (bool success, ) = timelock.call(queueData);
         require(success, "Timelock queue failed");
@@ -171,7 +185,15 @@ abstract contract UpgradeHopV2 is Script {
             0,
             "",
             upgradeCalldata,
-            block.timestamp + 1 days
+            eta
+        );
+        vm.warp(eta);
+        vm.prank(governor);
+        (success, ) = timelock.call(executeData);
+        require(success, "Timelock execute failed");
+        require(
+            address(uint160(uint256(vm.load(hop, ERC1967Utils.IMPLEMENTATION_SLOT)))) == newImplementation,
+            "execute did not upgrade"
         );
 
         SafeTx[] memory executeTxs = new SafeTx[](1);

@@ -1603,6 +1603,35 @@ console.log(`Bridge + compose fee: ${ethers.formatEther(feeWithCompose)} ETH`);
 | Robinhood | [`0x0000006D38568b00B457580b734e0076C62de659`](https://robinhoodchain.blockscout.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://robinhoodchain.blockscout.com/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
 | Celo | [`0x0000006D38568b00B457580b734e0076C62de659`](https://celoscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://celoscan.io/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
 
+### 2.0.2 Implementations
+
+The `Hop` proxies above serve whichever implementation their ProxyAdmin points at; `version()` on the proxy reports
+it. The 2.0.2 implementations are deployed and verified, and the proxies move to them when the batches in
+`src/script/hop/upgrade/txs/` execute.
+
+| Contract | Address | Chains |
+| --- | --- | --- |
+| `RemoteHopV201` | [`0xcefA9C7FD4c9151D15019e7e3AEf1eB341e22b13`](https://arbiscan.io/address/0xcefA9C7FD4c9151D15019e7e3AEf1eB341e22b13) | Every remote chain except Tempo (CREATE2, same address and runtime code everywhere) |
+| `FraxtalHopV201` | [`0x190738266d9f8e71Efb71357B294D713Af650026`](https://fraxscan.com/address/0x190738266d9f8e71Efb71357B294D713Af650026) | Fraxtal |
+| `RemoteHopV201Tempo` | [`0x8c48927557F6c1D55E82f3145b730b3AEBf8C058`](https://explore.tempo.xyz/address/0x8c48927557F6c1D55E82f3145b730b3AEBf8C058) | Tempo |
+
+On Ethereum the ProxyAdmin owner is a Compound-style timelock (1-day delay, 14-day grace period) whose admin is the
+Safe `0xfFFffF4F3baC444b2C0ecf2A1840d018bE783937`, so the upgrade is two batches: `1-<safe>-queue.json`, then
+`1-<safe>-execute.json` once `eta` has passed. `queueTransaction` checks `eta >= block.timestamp + delay` when the
+queue batch executes, so the generator sets `eta` to now + delay + `TIMELOCK_ETA_MARGIN` (default 3 days) and prints
+the deadline for the queue; `TIMELOCK_ETA` pins an exact value, to share one eta with another batch on the same
+timelock. If the queue cannot execute by that deadline, regenerate both files with
+`forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url <ethereum rpc>` (no `--broadcast`).
+
+### Tempo Fee-Inclusive Wrapper
+
+| Chain | `TempoFeeInclusiveWrapper` |
+| --- | --- |
+| Tempo | [`0x2cfcA4A7ecE48860bfb78B7BD7Bd8CC9Ef75DaA3`](https://explore.tempo.xyz/address/0x2cfcA4A7ecE48860bfb78B7BD7Bd8CC9Ef75DaA3) |
+
+It replaces `0x4877c528468a64fd5fba87ddefd517dca72814a3`, which predates the `ZeroRecipient()` check. Integrators
+should move to the address above.
+
 ---
 
 ## 9. Integration Checklist
