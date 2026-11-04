@@ -1,8 +1,7 @@
-pragma solidity ^0.8.0;
+pragma solidity 0.8.23;
 
 import { UpgradeHopV2 } from "src/script/hop/upgrade/UpgradeHopV2.sol";
 import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
-import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://api.zan.top/arb-one --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://mainnet.aurora.dev --ffi --legacy --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify --verifier blockscout --verifier-url https://explorer.aurora.dev/api/
@@ -30,7 +29,7 @@ import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://rpc.scroll.io --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 // zksync
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://api.infra.mainnet.somnia.network --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify
-// forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://rpc.tempo.xyz --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify
+// Tempo: src/script/hop/upgrade/UpgradeRemoteHopV2Tempo.s.sol
 
 contract UpgradeRemoteHopV2 is UpgradeHopV2 {
     function setUp() public override {
@@ -38,29 +37,13 @@ contract UpgradeRemoteHopV2 is UpgradeHopV2 {
         super.setUp();
     }
 
+    /// @dev Hop 2.1.0 implementations are plain CREATE deploys: the address differs per chain and is recorded in the
+    ///      generated Safe batch. Tempo's implementation takes the endpoint as a constructor argument and ships from
+    ///      `UpgradeRemoteHopV2Tempo.s.sol`.
     function deployImplementation() internal virtual override {
+        require(block.chainid != 4217, "use UpgradeRemoteHopV2Tempo.s.sol on Tempo");
         vm.startBroadcast();
-
-        if (block.chainid == 4217) {
-            newImplementation = address(
-                new RemoteHopV201Tempo{ salt: 0x4e59b44847b379578588920ca78fbf26c0b4956c9f4ed96d14900e7523000004 }(
-                    0x20Bb7C2E2f4e5ca2B4c57060d1aE2615245dCc9C
-                )
-            );
-            require(
-                newImplementation == 0x00000000b2707226814D5792137fb0B482310A36,
-                "Unexpected Tempo implementation address"
-            );
-        } else {
-            newImplementation = address(
-                new RemoteHopV201{ salt: 0x4e59b44847b379578588920ca78fbf26c0b4956ce6ac70492feaa59e63000008 }()
-            );
-            require(
-                newImplementation == 0x0000000f9a66622C8885E1071B78E37b2b3ecCCd,
-                "Unexpected implementation address"
-            );
-        }
-
+        newImplementation = address(new RemoteHopV201());
         vm.stopBroadcast();
     }
 }

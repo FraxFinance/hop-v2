@@ -30,6 +30,16 @@ interface IHopV201 {
         bytes memory _data
     ) external payable;
 
+    function sendOFT(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD,
+        uint128 _dstGas,
+        bytes memory _data,
+        address _refundTo
+    ) external payable;
+
     // views
 
     function quote(

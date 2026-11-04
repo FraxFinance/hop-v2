@@ -14,6 +14,7 @@ import { SendParam, MessagingFee, IOFT } from "@fraxfinance/layerzero-v2-upgrade
 import { IOFT2 } from "src/contracts/interfaces/IOFT2.sol";
 import { IHopV201, HopMessage, FeeMultipliers } from "src/contracts/interfaces/IHopV201.sol";
 import { IHopComposer } from "src/contracts/interfaces/IHopComposer.sol";
+import { HopActions } from "src/contracts/libraries/HopActions.sol";
 
 /// @notice HopV201 is nearly identical to HopV2 except for the recover/recoverERC20()/recoverETH and feeMultipliers functions.
 contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
@@ -69,6 +70,8 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     event RecoveredETH(uint256 amount);
 
     error InvalidOFT();
+    error ZeroRecipient();
+    error ZeroRefundAddress();
     error HopPaused();
     error NotEndpoint();
     error NotAuthorized();
@@ -89,7 +92,7 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
     }
 
     function version() external pure returns (string memory) {
-        return "2.0.1";
+        return "2.1.0";
     }
 
     function __init_HopV201(
@@ -126,13 +129,14 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         sendOFT(_oft, _dstEid, _recipient, _amountLD, 0, "");
     }
 
-    /// @notice Send an OFT to a destination with encoded data
+    /// @notice Send an OFT to a destination with encoded data; excess native fee is refunded to the caller
     /// @dev Check the FraxtalHopV2.remoteHop(_dstEid) to ensure the destination chain is supported.  If the destination
     ///      is not supported, tokens/messages would be stuck on Fraxtal and require a team intervention to recover.
     /// @param _oft Address of OFT
     /// @param _dstEid Destination EID
     /// @param _recipient bytes32 representation of recipient
     /// @param _amountLD Amount of OFT to send
+    /// @param _dstGas Gas forwarded to the composer on the destination
     /// @param _data Encoded data to pass
     function sendOFT(
         address _oft,
@@ -142,41 +146,45 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         uint128 _dstGas,
         bytes memory _data
     ) public payable virtual {
+        sendOFT(_oft, _dstEid, _recipient, _amountLD, _dstGas, _data, msg.sender);
+    }
+
+    /// @notice Send an OFT to a destination with encoded data and an explicit refund address
+    /// @dev Lets a contract acting for a user (a composer's proxy, a router) name the user as both `_recipient`
+    ///      and `_refundTo`, so neither the tokens nor the unspent fee land on the proxy.
+    /// @param _refundTo Receives whatever of `msg.value` the send does not consume; must accept native value
+    function sendOFT(
+        address _oft,
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint256 _amountLD,
+        uint128 _dstGas,
+        bytes memory _data,
+        address _refundTo
+    ) public payable virtual {
+        // Reject a recipient that truncates to the zero address: the send would be
+        // accepted here and then burn or strand the tokens on the destination, where
+        // only an admin could recover them. Checked on the narrowed address so a
+        // bytes32 with non-zero upper bits is caught too, and before any token is
+        // pulled so the caller keeps their funds.
+        if (address(uint160(uint256(_recipient))) == address(0)) revert ZeroRecipient();
+        if (_refundTo == address(0)) revert ZeroRefundAddress();
         HopV2Storage storage $ = _getHopV2Storage();
         if ($.paused) revert HopPaused();
         if (!$.approvedOft[_oft]) revert InvalidOFT();
 
-        // generate hop message
-        HopMessage memory hopMessage = HopMessage({
-            srcEid: $.localEid,
-            dstEid: _dstEid,
-            dstGas: _dstGas,
-            sender: bytes32(uint256(uint160(msg.sender))),
-            recipient: _recipient,
-            data: _data
-        });
+        // generate hop message (built in a helper so the seven-argument frame stays within the legacy stack limit)
+        HopMessage memory hopMessage = _buildHopMessage(_dstEid, _recipient, _dstGas, _data);
 
         // Transfer the OFT token to the hop. Clean off dust for the sender that would otherwise be lost through LZ.
         _amountLD = removeDust(_oft, _amountLD);
         if (_amountLD > 0) SafeERC20.safeTransferFrom(IERC20(IOFT(_oft).token()), msg.sender, address(this), _amountLD);
 
-        uint256 sendFee;
-        if (_dstEid == $.localEid) {
-            // Sending from src => src - no LZ send needed (sendFee remains 0)
-            _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: hopMessage });
-        } else {
-            sendFee = _sendToDestination({
-                _oft: _oft,
-                _amountLD: _amountLD,
-                _isTrustedHopMessage: true,
-                _hopMessage: hopMessage
-            });
-        }
-
-        // Validate the msg.value
-        _handleMsgValue(sendFee);
-
+        // Report what the caller sent in; a hub-side action (identity on spokes) may change what is routed.
         emit SendOFT(_oft, msg.sender, _dstEid, _recipient, _amountLD);
+
+        // Route, then validate the msg.value against what the send actually charged
+        _handleMsgValue(_route(_oft, _amountLD, hopMessage), _refundTo);
     }
 
     // Helper functions
@@ -195,9 +203,9 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         uint256 _amount,
         uint128 _dstGas,
         bytes memory _data
-    ) public view returns (uint256) {
+    ) public view virtual returns (uint256) {
         uint32 localEid_ = localEid();
-        if (_dstEid == localEid_) return 0;
+        if (_dstEid == localEid_ && !HopActions.isMintRedeem(_data)) return 0;
 
         // generate hop message
         HopMessage memory hopMessage = HopMessage({
@@ -350,13 +358,13 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         }
     }
 
-    /// @dev Check the msg value of the tx
-    function _handleMsgValue(uint256 _sendFee) internal {
+    /// @dev Check the msg value of the tx and return the excess to `_refundTo`
+    function _handleMsgValue(uint256 _sendFee, address _refundTo) internal {
         if (msg.value < _sendFee) {
             revert InsufficientFee();
         } else if (msg.value > _sendFee) {
-            // refund redundant fee to sender
-            (bool success, ) = payable(msg.sender).call{ value: msg.value - _sendFee }("");
+            // refund redundant fee
+            (bool success, ) = payable(_refundTo).call{ value: msg.value - _sendFee }("");
             if (!success) revert RefundFailed();
         }
     }
@@ -475,7 +483,7 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         return $.paused;
     }
 
-    function approvedOft(address oft) external view returns (bool isApproved) {
+    function approvedOft(address oft) public view returns (bool isApproved) {
         HopV2Storage storage $ = _getHopV2Storage();
         return $.approvedOft[oft];
     }
@@ -525,7 +533,56 @@ contract HopV201 is AccessControlEnumerableUpgradeable, IHopV201 {
         return $.TREASURY;
     }
 
+    /// @dev Builds the message for a send originating here. Separate from `sendOFT` so the struct literal's
+    ///      temporaries do not sit on top of the seven-argument frame in non-via-IR builds.
+    function _buildHopMessage(
+        uint32 _dstEid,
+        bytes32 _recipient,
+        uint128 _dstGas,
+        bytes memory _data
+    ) internal view returns (HopMessage memory) {
+        return
+            HopMessage({
+                srcEid: localEid(),
+                dstEid: _dstEid,
+                dstGas: _dstGas,
+                sender: bytes32(uint256(uint160(msg.sender))),
+                recipient: _recipient,
+                data: _data
+            });
+    }
+
+    /// @dev Applies the hub-side action hook and routes the (possibly converted) OFT. Kept separate from `sendOFT`
+    ///      so the frame stays shallow enough for non-via-IR builds. Returns the fee the send charged (0 when local).
+    function _route(address _oft, uint256 _amountLD, HopMessage memory _hopMessage) internal returns (uint256 sendFee) {
+        (_oft, _amountLD, _hopMessage) = _beforeRoute(_oft, _amountLD, _hopMessage);
+
+        if (_hopMessage.dstEid == localEid() && !HopActions.isMintRedeem(_hopMessage.data)) {
+            // Sending from src => src - no LZ send needed (sendFee remains 0). A tagged action is the exception:
+            // it is executed on Fraxtal, so it travels there and back even when the destination is this chain.
+            _sendLocal({ _oft: _oft, _amount: _amountLD, _hopMessage: _hopMessage });
+        } else {
+            sendFee = _sendToDestination({
+                _oft: _oft,
+                _amountLD: _amountLD,
+                _isTrustedHopMessage: true,
+                _hopMessage: _hopMessage
+            });
+        }
+    }
+
     // virtual functions to override
+
+    /// @dev Hook for hub-side actions, run after the caller's tokens are pulled and before routing.
+    ///      Spokes keep the identity; `FraxtalHopV201` converts tagged messages here.
+    function _beforeRoute(
+        address _oft,
+        uint256 _amountLD,
+        HopMessage memory _hopMessage
+    ) internal virtual returns (address, uint256, HopMessage memory) {
+        return (_oft, _amountLD, _hopMessage);
+    }
+
     function _generateSendParam(
         uint256 _amountLD,
         HopMessage memory _hopMessage
