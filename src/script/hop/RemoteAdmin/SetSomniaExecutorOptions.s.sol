@@ -5,6 +5,7 @@ import { SetExecutorOptionsBase } from "./SetExecutorOptionsBase.s.sol";
 import { IHopV2 } from "src/contracts/interfaces/IHopV2.sol";
 
 // forge script src/script/hop/RemoteAdmin/SetSomniaExecutorOptions.s.sol --rpc-url https://rpc.frax.com --ffi
+// CHAIN_IDS=137,143,988,98866 forge script src/script/hop/RemoteAdmin/SetSomniaExecutorOptions.s.sol --rpc-url https://rpc.frax.com --ffi
 contract SetSomniaExecutorOptions is SetExecutorOptionsBase {
     uint32 public constant SOMNIA_EID = 30_380;
     uint128 public constant SOMNIA_RECEIVE_GAS = 1_000_000;
