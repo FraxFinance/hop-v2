@@ -90,6 +90,7 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
     error VaultExists();
     error RefundFailed();
     error InvalidCaller();
+    error RecoverFailed();
 
     event VaultAdded(address vault, address share);
     event RemoteVaultAdded(uint32 eid, address vault, string name, string symbol);
@@ -99,6 +100,8 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
     event DepositReturn(address indexed to, uint32 indexed remoteEid, address indexed remoteVault, uint256 amount);
     event Redeem(address indexed to, uint32 indexed remoteEid, address indexed remoteVault, uint256 amount);
     event RedeemReturn(address indexed to, uint32 indexed remoteEid, address indexed remoteVault, uint256 amount);
+    event RecoveredERC20(address tokenAddress, uint256 tokenAmount);
+    event RecoveredETH(uint256 ethAmount);
 
     constructor() {
         _disableInitializers();
@@ -434,9 +437,23 @@ contract RemoteVaultHop is AccessControlEnumerableUpgradeable, IHopComposer {
         $.proxyAdmin = _proxyAdmin;
     }
 
-    function recover(address _target, uint256 _value, bytes memory _data) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        (bool success, ) = _target.call{ value: _value }(_data);
-        require(success);
+    /// @notice Recover ERC20 tokens held by this contract
+    /// @dev Recovered tokens are always sent to the caller (scoped recovery, no arbitrary call).
+    ///      Mirrors the HopV201.recoverERC20 hardening from PR #17.
+    /// @param _tokenAddress The token to recover
+    /// @param _tokenAmount The amount to recover
+    function recoverERC20(address _tokenAddress, uint256 _tokenAmount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        SafeERC20.safeTransfer(IERC20(_tokenAddress), msg.sender, _tokenAmount);
+        emit RecoveredERC20(_tokenAddress, _tokenAmount);
+    }
+
+    /// @notice Recover ETH held by this contract
+    /// @dev Recovered ETH is always sent to the caller.
+    /// @param _ethAmount The amount to recover
+    function recoverETH(uint256 _ethAmount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        (bool success, ) = msg.sender.call{ value: _ethAmount }("");
+        if (!success) revert RecoverFailed();
+        emit RecoveredETH(_ethAmount);
     }
 
     function removeDust(uint256 _amountLD) internal view returns (uint256) {
