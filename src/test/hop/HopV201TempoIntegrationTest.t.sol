@@ -4,7 +4,9 @@ pragma solidity 0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import { FeeMultipliers } from "src/contracts/interfaces/IHopV201.sol";
+import { FeeMultipliers, HopMessage } from "src/contracts/interfaces/IHopV201.sol";
+import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { IMessagingComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessagingComposer.sol";
 import { RemoteHopV201Tempo } from "src/contracts/hop/RemoteHopV201Tempo.sol";
 import { deployRemoteHopV201Tempo } from "src/script/hop/upgrade/DeployRemoteHopV201Tempo.s.sol";
 
@@ -171,6 +173,60 @@ contract HopV201TempoIntegrationTest is Test {
 
         vm.expectRevert(abi.encodeWithSignature("NotImplemented()"));
         tempoHop.recoverETH(5 ether);
+    }
+
+    /// @dev The Tempo hop retires only a compose its EndpointV2Alt holds as pending; the endpoint's later
+    ///      delivery takes the duplicate early return and the queue entry closes.
+    function test_Integration_SetMessageProcessed_RetiresPendingCompose() public {
+        setUpTempo();
+
+        bytes32 guid = keccak256("pending");
+        bytes memory message = OFTComposeMsgCodec.encode(
+            11,
+            FRAXTAL_EID,
+            1e6,
+            abi.encodePacked(
+                _toBytes32(FRAXTAL_HOP),
+                abi.encode(
+                    HopMessage({
+                        srcEid: ARBITRUM_EID,
+                        dstEid: TEMPO_EID,
+                        dstGas: 400_000,
+                        sender: _toBytes32(address(0x123)),
+                        recipient: _toBytes32(address(0xBEEF)),
+                        data: ""
+                    })
+                )
+            )
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        tempoHop.setMessageProcessed(FRXUSD_OFT, guid, 0, message);
+
+        vm.prank(FRXUSD_OFT);
+        IMessagingComposer(TEMPO_ENDPOINT).sendCompose(address(tempoHop), guid, 0, message);
+
+        vm.prank(address(0xdead));
+        vm.expectRevert();
+        tempoHop.setMessageProcessed(FRXUSD_OFT, guid, 0, message);
+
+        tempoHop.setMessageProcessed(FRXUSD_OFT, guid, 0, message);
+        assertTrue(
+            tempoHop.messageProcessed(
+                keccak256(abi.encode(FRXUSD_OFT, FRAXTAL_EID, uint64(11), _toBytes32(FRAXTAL_HOP)))
+            ),
+            "replay key set from the queued bytes"
+        );
+
+        IMessagingComposer(TEMPO_ENDPOINT).lzCompose(FRXUSD_OFT, address(tempoHop), guid, 0, message, "");
+        assertEq(
+            IMessagingComposer(TEMPO_ENDPOINT).composeQueue(FRXUSD_OFT, address(tempoHop), guid, 0),
+            bytes32(uint256(1)),
+            "queue entry closed"
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("ComposeNotPending()"));
+        tempoHop.setMessageProcessed(FRXUSD_OFT, guid, 0, message);
     }
 
     function _toBytes32(address account) internal pure returns (bytes32) {
