@@ -11,8 +11,8 @@ importers:
         specifier: github:FraxFinance/frax-oft-upgradeable#de9f494e342975d2dbdc19619897115517efd724
         version: https://codeload.github.com/FraxFinance/frax-oft-upgradeable/tar.gz/de9f494e342975d2dbdc19619897115517efd724(@openzeppelin/contracts@5.4.0)(typescript@5.9.3)
       "@fraxfinance/layerzero-v2-upgradeable":
-        specifier: github:fraxfinance/LayerZero-v2-upgradeable
-        version: https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/6729706fab0e033aef57a4dc42cfcb2c7f959748
+        specifier: github:fraxfinance/LayerZero-v2-upgradeable#004f9ad064cc7eab45e57a9b5b004b30bec8e238
+        version: https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/004f9ad064cc7eab45e57a9b5b004b30bec8e238
       "@layerzerolabs/lz-evm-messagelib-v2":
         specifier: ^3.0.115
         version: 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
@@ -24,16 +24,16 @@ importers:
         version: 3.0.156
       "@layerzerolabs/oapp-alt-evm":
         specifier: 0.0.5
-        version: 0.0.5(3haxfeda4mxymuon5xg3ornegi)
+        version: 0.0.5(580ebad10ed9302839dcb02529d846de)
       "@layerzerolabs/oft-alt-evm":
         specifier: 0.0.5
-        version: 0.0.5(3haxfeda4mxymuon5xg3ornegi)
+        version: 0.0.5(580ebad10ed9302839dcb02529d846de)
       "@layerzerolabs/oft-evm-upgradeable":
         specifier: ^4.0.2
-        version: 4.0.2(lds7frun5f6mapjb42abn5xot4)
+        version: 4.0.2(6c3e0f2303a91f392d8f615975624f21)
       "@layerzerolabs/test-devtools-evm-foundry":
         specifier: ~8.0.0
-        version: 8.0.1(ikuzqhs2r3fcjhok3eeeziqdiu)
+        version: 8.0.1(44e9a88ce90a37ac396b3334df72d5f7)
       "@openzeppelin/contracts-4.8.1":
         specifier: npm:@openzeppelin/contracts@4.8.1
         version: "@openzeppelin/contracts@4.8.1"
@@ -64,10 +64,10 @@ importers:
         version: 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/oapp-evm":
         specifier: ^0.4.1
-        version: 0.4.1(3haxfeda4mxymuon5xg3ornegi)
+        version: 0.4.1(580ebad10ed9302839dcb02529d846de)
       "@layerzerolabs/oft-evm":
         specifier: ^4.0.1
-        version: 4.0.1(lds7frun5f6mapjb42abn5xot4)
+        version: 4.0.1(6c3e0f2303a91f392d8f615975624f21)
       "@openzeppelin/contracts":
         specifier: ~5.4.0
         version: 5.4.0
@@ -280,12 +280,12 @@ packages:
     version: 1.1.0
     engines: { node: ">=18.16.0" }
 
-  "@fraxfinance/layerzero-v2-upgradeable@https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/6729706fab0e033aef57a4dc42cfcb2c7f959748":
+  "@fraxfinance/layerzero-v2-upgradeable@https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/004f9ad064cc7eab45e57a9b5b004b30bec8e238":
     resolution:
       {
-        tarball: https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/6729706fab0e033aef57a4dc42cfcb2c7f959748,
+        tarball: https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/004f9ad064cc7eab45e57a9b5b004b30bec8e238,
       }
-    version: 1.0.2
+    version: 1.0.3
     engines: { node: ">=18.12.0" }
 
   "@jridgewell/gen-mapping@0.3.13":
@@ -2277,7 +2277,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  "@fraxfinance/layerzero-v2-upgradeable@https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/6729706fab0e033aef57a4dc42cfcb2c7f959748":
+  "@fraxfinance/layerzero-v2-upgradeable@https://codeload.github.com/fraxfinance/LayerZero-v2-upgradeable/tar.gz/004f9ad064cc7eab45e57a9b5b004b30bec8e238":
     {}
 
   "@jridgewell/gen-mapping@0.3.13":
@@ -2340,7 +2340,7 @@ snapshots:
       bs58: 5.0.0
       tiny-invariant: 1.3.3
 
-  "@layerzerolabs/oapp-alt-evm@0.0.5(3haxfeda4mxymuon5xg3ornegi)":
+  "@layerzerolabs/oapp-alt-evm@0.0.5(580ebad10ed9302839dcb02529d846de)":
     dependencies:
       "@layerzerolabs/lz-evm-messagelib-v2": 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-protocol-v2": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
@@ -2352,7 +2352,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  "@layerzerolabs/oapp-evm@0.4.1(3haxfeda4mxymuon5xg3ornegi)":
+  "@layerzerolabs/oapp-evm@0.4.1(580ebad10ed9302839dcb02529d846de)":
     dependencies:
       "@layerzerolabs/lz-evm-messagelib-v2": 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-protocol-v2": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
@@ -2364,7 +2364,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  "@layerzerolabs/oft-alt-evm@0.0.5(3haxfeda4mxymuon5xg3ornegi)":
+  "@layerzerolabs/oft-alt-evm@0.0.5(580ebad10ed9302839dcb02529d846de)":
     dependencies:
       "@layerzerolabs/lz-evm-messagelib-v2": 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-protocol-v2": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
@@ -2372,31 +2372,31 @@ snapshots:
       "@openzeppelin/contracts": 5.4.0
       "@openzeppelin/contracts-upgradeable": 5.4.0(@openzeppelin/contracts@5.4.0)
 
-  "@layerzerolabs/oft-evm-upgradeable@4.0.2(lds7frun5f6mapjb42abn5xot4)":
+  "@layerzerolabs/oft-evm-upgradeable@4.0.2(6c3e0f2303a91f392d8f615975624f21)":
     dependencies:
       "@layerzerolabs/lz-evm-messagelib-v2": 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-protocol-v2": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-v1-0.7": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)
-      "@layerzerolabs/oapp-evm": 0.4.1(3haxfeda4mxymuon5xg3ornegi)
+      "@layerzerolabs/oapp-evm": 0.4.1(580ebad10ed9302839dcb02529d846de)
       "@openzeppelin/contracts": 5.4.0
       "@openzeppelin/contracts-upgradeable": 5.4.0(@openzeppelin/contracts@5.4.0)
 
-  "@layerzerolabs/oft-evm@4.0.1(lds7frun5f6mapjb42abn5xot4)":
+  "@layerzerolabs/oft-evm@4.0.1(6c3e0f2303a91f392d8f615975624f21)":
     dependencies:
       "@layerzerolabs/lz-evm-messagelib-v2": 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-protocol-v2": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-v1-0.7": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)
-      "@layerzerolabs/oapp-evm": 0.4.1(3haxfeda4mxymuon5xg3ornegi)
+      "@layerzerolabs/oapp-evm": 0.4.1(580ebad10ed9302839dcb02529d846de)
       "@openzeppelin/contracts": 5.4.0
       "@openzeppelin/contracts-upgradeable": 5.4.0(@openzeppelin/contracts@5.4.0)
 
-  "@layerzerolabs/test-devtools-evm-foundry@8.0.1(ikuzqhs2r3fcjhok3eeeziqdiu)":
+  "@layerzerolabs/test-devtools-evm-foundry@8.0.1(44e9a88ce90a37ac396b3334df72d5f7)":
     dependencies:
       "@layerzerolabs/lz-evm-messagelib-v2": 3.0.156(@axelar-network/axelar-gmp-sdk-solidity@5.10.0)(@chainlink/contracts-ccip@0.7.6(ethers@5.8.0))(@eth-optimism/contracts@0.6.0(ethers@5.8.0))(@layerzerolabs/lz-evm-protocol-v2@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9))(@layerzerolabs/lz-evm-v1-0.7@3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4))(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-protocol-v2": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)(solidity-bytes-utils@https://codeload.github.com/GNSPS/solidity-bytes-utils/tar.gz/fc502455bb2a7e26a743378df042612dd50d1eb9)
       "@layerzerolabs/lz-evm-v1-0.7": 3.0.156(@openzeppelin/contracts-upgradeable@5.4.0(@openzeppelin/contracts@5.4.0))(@openzeppelin/contracts@5.4.0)(hardhat-deploy@0.12.4)
-      "@layerzerolabs/oapp-evm": 0.4.1(3haxfeda4mxymuon5xg3ornegi)
-      "@layerzerolabs/oft-evm": 4.0.1(lds7frun5f6mapjb42abn5xot4)
+      "@layerzerolabs/oapp-evm": 0.4.1(580ebad10ed9302839dcb02529d846de)
+      "@layerzerolabs/oft-evm": 4.0.1(6c3e0f2303a91f392d8f615975624f21)
       "@openzeppelin/contracts": 5.4.0
       "@openzeppelin/contracts-upgradeable": 5.4.0(@openzeppelin/contracts@5.4.0)
 

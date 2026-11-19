@@ -90,8 +90,8 @@ contract TempoFeeInclusiveWrapperForkTest is Test {
     // ---------------------------------------------------
 
     /// @dev The wrapper calls `setUserToken` with itself as `msg.sender` and the user as
-    ///      `tx.origin`. The deployed fee manager must accept that (it does — the hop makes the
-    ///      same call on every send). If Tempo ever ships a direct-call-only guard, this fails
+    ///      `tx.origin`. The deployed fee manager must accept that (it does — the hop binds its
+    ///      own fee token the same way). If Tempo ever ships a direct-call-only guard, this fails
     ///      before mainnet does.
     function test_FeeManager_SetUserTokenFromContractContext_Succeeds() public {
         SetUserTokenCaller caller = new SetUserTokenCaller();

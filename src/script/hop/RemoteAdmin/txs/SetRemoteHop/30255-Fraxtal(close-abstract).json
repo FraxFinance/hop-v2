@@ -1,0 +1,17 @@
+{
+  "chainId": 252,
+  "createdAt": 1792423793000,
+  "meta": {
+    "description": "FraxtalHopV2.setRemoteHop(30324, address(0)): close the deprecated Abstract route so hub quotes and sends toward Abstract fail closed",
+    "name": "Transactions Batch"
+  },
+  "transactions": [
+    {
+      "data": "0xaa662ee300000000000000000000000000000000000000000000000000000000000076740000000000000000000000000000000000000000000000000000000000000000",
+      "operation": 0,
+      "to": "0x00000000e18aFc20Afe54d4B2C8688bB60c06B36",
+      "value": "0"
+    }
+  ],
+  "version": "1.0"
+}

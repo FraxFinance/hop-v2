@@ -113,7 +113,7 @@ interface IRemoteHopTempo {
 ///
 ///         Step 3 calls `TIP_FEE_MANAGER.setUserToken` from contract context.
 ///         The deployed fee manager permits that — the deployed
-///         `RemoteHopV201Tempo` makes the same call on every send. Both
+///         `RemoteHopV201Tempo` binds its own fee token the same way. Both
 ///         behaviours, and the full send path, are pinned against a Tempo
 ///         mainnet fork in `TempoFeeInclusiveWrapperForkTest`
 ///         (`forge test --network tempo`).

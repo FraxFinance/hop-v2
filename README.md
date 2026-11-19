@@ -95,7 +95,7 @@ Hop V2 is a cross-chain token bridging protocol built on [LayerZero V2](https://
               │                                                       │
               │        ╔═════════════════╗                            │
               │        ║  BASE           ║                            │
-              │        ║  EID 30_102     ║                            │
+              │        ║  EID 30_184     ║                            │
               │        ║                 ║                            │
               │        ║ RemoteHopV2     ║                            │
               │        ║ + RemoteAdmin   ║◄───────────────────────────┘
@@ -110,7 +110,7 @@ Hop V2 is a cross-chain token bridging protocol built on [LayerZero V2](https://
 
 ```
 remoteHop[30_110] → RemoteHopV2 on Arbitrum
-remoteHop[30_102] → RemoteHopV2 on Base
+remoteHop[30_184] → RemoteHopV2 on Base
 remoteHop[30_101] → RemoteHopV2 on Ethereum
 
 remoteHop[30_255] (Fraxtal EID) on each RemoteHopV2 → FraxtalHopV2
@@ -123,7 +123,7 @@ remoteHop[30_255] (Fraxtal EID) on each RemoteHopV2 → FraxtalHopV2
 User on Base wants to send frxUSD to an address on Fraxtal.
 
 ```
-  BASE (EID 30_102)                           FRAXTAL (EID 30_255)
+  BASE (EID 30_184)                           FRAXTAL (EID 30_255)
   ─────────────────                           ──────────────────────
 
   User                                        recipient
@@ -163,7 +163,7 @@ User on Base wants to send frxUSD to an address on Fraxtal.
 User on Arbitrum sends frxUSD to an address on Base. All traffic relays through Fraxtal.
 
 ```
-  ARBITRUM (30_110)         FRAXTAL (30_255)          BASE (30_102)
+  ARBITRUM (30_110)         FRAXTAL (30_255)          BASE (30_184)
   ─────────────────         ─────────────────         ─────────────
 
   User
@@ -171,7 +171,7 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │ 1. approve(RemoteHopV2_ARB, amt)
    │ 2. sendOFT(
    │      oft=frxUSD_ARB,
-   │      dstEid=30_102,              ←── Base EID
+   │      dstEid=30_184,              ←── Base EID
    │      recipient=0xBASE_USER,
    │      amount=1000e18
    │    ) {value: lzFee + hopFee}
@@ -184,7 +184,7 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │  gas    = max(400_000, 1_000_000)
    │  composeMsg = abi.encode(HopMessage{
    │    srcEid: 30_110,
-   │    dstEid: 30_102,       ← original destination
+   │    dstEid: 30_184,       ← original destination
    │    dstGas: 0,
    │    sender: 0xARB_USER,
    │    recipient: 0xBASE_USER,
@@ -202,16 +202,16 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │                          │    isTrusted: remoteHop[30_110] == sender ✓
    │                          │
    │                          │ 2. decode HopMessage
-   │                          │    hopMessage.dstEid = 30_102 (Base)
+   │                          │    hopMessage.dstEid = 30_184 (Base)
    │                          │
    │                          │ 3. dstEid != FRAXTAL_EID
    │                          │    → _sendToDestination()
    │                          │
    │                          │ 4. _generateSendParam():
-   │                          │    dstEid = 30_102
+   │                          │    dstEid = 30_184
    │                          │    to     = RemoteHopV2_BASE
    │                          │    composeMsg = abi.encode(HopMessage{
-   │                          │      dstEid: 30_102,
+   │                          │      dstEid: 30_184,
    │                          │      recipient: 0xBASE_USER,
    │                          │      data: ""     ← no compose
    │                          │    })
@@ -231,10 +231,10 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
    │                          │             ▼
    │                          │            BASE_USER receives frxUSD
    │                          ▼
-   │                    emit Hop(oft, 30_110, 30_102, recipient, amount)
+   │                    emit Hop(oft, 30_110, 30_184, recipient, amount)
    ▼
 
-  Total Fee = LZ(ARB→FRAX) + quoteHop(30_102) + Hop service fee
+  Total Fee = LZ(ARB→FRAX) + quoteHop(30_184) + Hop service fee
 ```
 
 ---
@@ -244,7 +244,7 @@ User on Arbitrum sends frxUSD to an address on Base. All traffic relays through 
 User on Fraxtal sends to a remote chain directly from `FraxtalHopV2`.
 
 ```
-  FRAXTAL (30_255)                              BASE (30_102)
+  FRAXTAL (30_255)                              BASE (30_184)
   ────────────────                              ─────────────
 
   User (on Fraxtal)
@@ -252,7 +252,7 @@ User on Fraxtal sends to a remote chain directly from `FraxtalHopV2`.
    │ 1. approve(FraxtalHopV2, amount)
    │ 2. FraxtalHopV2.sendOFT(
    │      oft=frxUSD,
-   │      dstEid=30_102,
+   │      dstEid=30_184,
    │      recipient=0xBASE_USER,
    │      amount=1000e18
    │    ) {value: fee}
@@ -260,14 +260,14 @@ User on Fraxtal sends to a remote chain directly from `FraxtalHopV2`.
    ▼
   FraxtalHopV2
    │ sendOFT() override:
-   │   validate: remoteHop[30_102] != 0 ✓
+   │   validate: remoteHop[30_184] != 0 ✓
    │
    │ super.sendOFT():
    │   dstEid != localEid(30_255)
    │   → _sendToDestination()
    │
    │ _generateSendParam():
-   │   dstEid = 30_102
+   │   dstEid = 30_184
    │   to     = 0xBASE_USER  (no compose data)
    │   (direct delivery, no composeMsg)
    │
@@ -562,7 +562,7 @@ bytes32 internal constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 | `setNumDVNs(n)` | `DEFAULT_ADMIN_ROLE` | Set DVN count for fee |
 | `setHopFee(fee)` | `DEFAULT_ADMIN_ROLE` | Set service fee (10_000 based) |
 | `setExecutorOptions(eid, opts)` | `DEFAULT_ADMIN_ROLE` | Set per-chain executor options |
-| `setMessageProcessed(...)` | `DEFAULT_ADMIN_ROLE` | Manually mark message processed |
+| `setMessageProcessed(...)` | `DEFAULT_ADMIN_ROLE` | Retire a compose so it executes without paying out. V201 takes `(oft, guid, index, message)` and accepts only a compose the endpoint still holds as pending ([§6.7](#67-pending-composes-and-admin-changes)) |
 | `recover(target, value, data)` | `DEFAULT_ADMIN_ROLE` | Emergency fund recovery |
 
 #### Key Events
@@ -582,6 +582,11 @@ error NotAuthorized();    // Caller lacks required role
 error InsufficientFee();  // msg.value < required fee
 error RefundFailed();     // ETH refund call failed
 ```
+
+`HopV201`, the implementation behind every deployed proxy, adds `ZeroRecipient()`: `sendOFT` and `quote` revert when
+the recipient narrows to `address(0)`, and the hub's `lzCompose` reverts before routing such a message, so the compose
+stays queued at the endpoint and the funds stay on the hub for admin recovery (`recoverERC20` + `setMessageProcessed`,
+[§6.7](#67-pending-composes-and-admin-changes)). It also adds `RecoverFailed()`, `LengthMismatch()` and `ComposeNotPending()`.
 
 #### Fee Calculation (`quoteHop`)
 
@@ -662,6 +667,8 @@ lzCompose(oft, guid, message, executor, executorData)
     ├─ if !isTrusted:
     │    overwrite hopMessage.srcEid with OFTComposeMsgCodec.srcEid()
     │    overwrite hopMessage.sender  with OFTComposeMsgCodec.composeFrom()
+    │
+    ├─ recipient narrows to address(0)?        (ZeroRecipient, V201: compose stays queued, funds stay on the hub)
     │
     ├─ if hopMessage.dstEid == FRAXTAL_EID:
     │    _sendLocal(oft, amount, hopMessage)
@@ -1096,7 +1103,12 @@ if ($.messageProcessed[messageHash]) return (isTrusted, true);  // skip duplicat
 $.messageProcessed[messageHash] = true;
 ```
 
-Administrators can manually mark a hash processed via `setMessageProcessed()` to handle edge cases.
+Administrators can retire a compose with `setMessageProcessed()`: when the compose later executes, the hop takes the
+duplicate return above and moves no funds. In V201 the function takes the queued message itself,
+`setMessageProcessed(oft, guid, index, message)`, reverts `ComposeNotPending()` unless the endpoint's compose queue
+holds exactly that message as pending for this hop, and derives the key from it. A mark therefore cannot pre-empt a
+future message or hit a mistyped tuple. HopV2 takes the four key fields directly and checks nothing. See
+[§6.7](#67-pending-composes-and-admin-changes) for when to use it.
 
 ### 6.3 Access Control
 
@@ -1108,7 +1120,7 @@ DEFAULT_ADMIN_ROLE
   ├─ setHopFee()              Service fee
   ├─ setExecutorOptions()     Per-chain gas options
   ├─ pauseOff()               Resume (admin only, not pauser)
-  ├─ setMessageProcessed()    Manual replay mark
+  ├─ setMessageProcessed()    Retire a pending compose (§6.7)
   └─ recover()                Emergency fund recovery
 
 PAUSER_ROLE
@@ -1140,6 +1152,65 @@ and the caller keeps their tokens. On Tempo the refund is the unspent part of a 
 the same `refundTo`. A contract acting for a user (a composer's proxy, a router) passes the user as both
 `recipient` and `refundTo`, so neither the tokens nor the unspent fee land on the proxy.
 
+### 6.7 Pending Composes and Admin Changes
+
+A composed transfer settles in two transactions. The destination OFT credits the hop and queues the compose at the
+endpoint; the executor calls `lzCompose` later, and retries or gives up if it reverts. In between, the hop holds the
+principal. The hop keeps no record of it: the only record is the endpoint's compose queue, where a pending entry holds
+the message hash and a delivered one holds `0x…01`.
+
+These admin calls act on that window:
+
+| Admin call | Effect on a pending compose | Undone by |
+|---|---|---|
+| `recoverERC20(token, …)` of a bridged OFT token | the compose reverts on the transfer once the balance is short | returning the tokens, then a retry |
+| `pauseOn()` | the compose reverts `HopPaused()` | `pauseOff()`, then a retry |
+| `setApprovedOft(oft, false)` | the compose reverts `InvalidOFT()` | re-approving, then a retry |
+| `setRemoteHop(eid, newHop)` | messages composed by the old hop arrive untrusted: `srcEid` and `sender` are overwritten, and a composer that authenticates them reverts | restoring the old hop, a retry, then setting the new one |
+| `setMessageProcessed(…)` | the compose returns without paying out | nothing: the user is compensated by the Safe |
+
+Hop fee revenue is native on every chain except Tempo, where it accrues in the fee tokens (pathUSD, USDT0). Sweeping
+revenue never touches a pending compose; recovering a bridged OFT token always might. Pausing stays the immediate
+emergency action: pause first, reconcile afterwards.
+
+**Before a planned change** (recovering an OFT token, de-approving an OFT, rotating a remote hop):
+
+1. List what is pending. The script reads the endpoint from the hop and checks each queued compose against the queue:
+
+   ```bash
+   pnpm pending-composes --rpc <rpc> --hop <hop> --from-block <block the hop was deployed in>
+   ```
+
+   No output and exit 0 means nothing is pending. `--chunk` sets the log range per request (default 100000, the
+   Tempo RPC limit); `--json` prints machine-readable output.
+2. If something is pending, let it settle or retry it before the change. For a hop rotation, first stop new sends
+   from the old hop (pause it on its own chain), let the queue drain, then rotate.
+
+**Retrying a compose.** Anyone can execute a pending compose through the endpoint, with the values the script prints:
+
+```bash
+cast send <endpoint> "lzCompose(address,address,bytes32,uint16,bytes,bytes)" \
+  <oft> <hop> <guid> <index> <message> 0x --gas-limit <gas>
+```
+
+On the hub, a forwarded compose pays its next-leg LayerZero fee from the hub's native balance, so keep it funded and
+give the call enough gas for the forward leg.
+
+**Retiring a compose that can never succeed.** In this order, so the recovered funds can never also be paid out:
+
+1. `setMessageProcessed(oft, guid, index, message)`. It reverts `ComposeNotPending()` unless the endpoint holds
+   exactly that message as pending for the hop.
+2. Optionally close the queue entry by executing the compose through the endpoint as above: the hop takes the
+   duplicate return and the endpoint marks it delivered. The hop must be unpaused and the OFT approved, because both
+   checks run before the duplicate check.
+3. `recoverERC20(token, amountLD)`, which pays the calling admin.
+4. The Safe pays the user. `composeFrom` in the message is a hop, not the user: take the payee from the `SendOFT`
+   event of the transaction that started the transfer on the source chain (find it on LayerZero Scan by GUID).
+
+Implementations before 2.0.2 take `setMessageProcessed(oft, srcEid, nonce, composeFrom)` and check nothing. Until
+2.0.2 is live, read those four values from the script output for a compose it lists as pending, and do not sign a
+mark for anything else.
+
 ---
 
 ## 7. Technical Examples
@@ -1150,7 +1221,7 @@ the same `refundTo`. A contract acting for a user (a composer's proxy, a router)
 // Chain IDs (LayerZero EIDs)
 uint32 constant FRAXTAL_EID  = 30_255;
 uint32 constant ARBITRUM_EID = 30_110;
-uint32 constant BASE_EID     = 30_102;
+uint32 constant BASE_EID     = 30_184;
 uint32 constant ETHEREUM_EID = 30_101;
 
 // Deployed addresses
@@ -1512,7 +1583,7 @@ const remoteHop = new ethers.Contract(
 );
 
 const frxUSD_ARB = "0x...";  // frxUSD OFT on Arbitrum
-const BASE_EID   = 30_102;
+const BASE_EID   = 30_184;
 const recipient  = ethers.zeroPadValue("0xRecipientAddress", 32);
 const amount     = ethers.parseEther("1000");  // 1000 frxUSD
 
@@ -1574,16 +1645,13 @@ IHopV201(hop).sendOFT{ value: fee }(frxUsdOft, dstEid, to, amount, 0, TAG, user)
 | Chain | `Hop` | `RemoteAdmin` |
 | --- | --- | --- |
 | Arbitrum | [`0x0000006D38568b00B457580b734e0076C62de659`](https://arbiscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://arbiscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
-| Aurora | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.aurora.dev/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.aurora.dev/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Avalanche | [`0x0000006D38568b00B457580b734e0076C62de659`](https://routescan.io/address/0x0000006D38568b00B457580b734e0076C62de659/contract/43114/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://routescan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/43114/code) |
 | Base | [`0x0000006D38568b00B457580b734e0076C62de659`](https://basescan.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x07dB789aD17573e5169eDEfe14df91CC305715AA`](https://basescan.org/address/0x07dB789aD17573e5169eDEfe14df91CC305715AA) |
-| Berachain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://berascan.com/address/0x0000006D38568b00B457580b734e0076C62de659/contract/43114/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://berascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/43114/code) |
-| BSC | [`0x0000006D38568b00B457580b734e0076C62de659`](https://bscscan.com/address/0x0000006D38568b00B457580b734e0076C62de659/contract/43114/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://bscscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/43114/code) |
+| BSC | [`0x0000006D38568b00B457580b734e0076C62de659`](https://bscscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://bscscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Ethereum | [`0x0000006D38568b00B457580b734e0076C62de659`](https://etherscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa`](https://etherscan.io/address/0x181EBC9deA868ED8e5EeeAef7f767D43BF390dFa) |
 | Hyperliquid | [`0x0000006D38568b00B457580b734e0076C62de659`](https://hyperevmscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://hyperevmscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Ink | [`0x0000006D38568b00B457580b734e0076C62de659`](https://routescan.io/address/0x0000006D38568b00B457580b734e0076C62de659/contract/57073/code) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://routescan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9/contract/57073/code) |
 | Katana | [`0x0000006D38568b00B457580b734e0076C62de659`](https://katanascan.com/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://katanascan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
-| Mode | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.mode.network/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://explorer.mode.network/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Monad | [`0x0000006D38568b00B457580b734e0076C62de659`](https://monadscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55`](https://monadscan.com/address/0x4bE0942c2CbFd741DB5906CF2831c1AF29fcEa55) |
 | Optimism | [`0x0000006D38568b00B457580b734e0076C62de659`](https://optimistic.etherscan.io/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://optimistic.etherscan.io/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Polygon | [`0x0000006D38568b00B457580b734e0076C62de659`](https://polygonscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://polygonscan.com/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
@@ -1594,14 +1662,43 @@ IHopV201(hop).sendOFT{ value: fee }(frxUsdOft, dstEid, to, amount, 0, TAG, user)
 | Unichain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://uniscan.xyz/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://uniscan.xyz/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | Worldchain | [`0x0000006D38568b00B457580b734e0076C62de659`](https://worldscan.org/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://worldscan.org/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
 | X-Layer | [`0x0000006D38568b00B457580b734e0076C62de659`](https://oklink.com/x-layer/address/0x0000006d38568b00b457580b734e0076c62de659) | [`0x954286118E93df807aB6f99aE0454f8710f0a8B9`](https://oklink.com/x-layer/address/0x954286118E93df807aB6f99aE0454f8710f0a8B9) |
-| Abstract | [`0x0000006D38568b00B457580b734e0076C62de659`](https://abscan.org/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://abscan.org/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
 | Linea | [`0x0000006D38568b00B457580b734e0076C62de659`](https://lineascan.build/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xfa803b63DaACCa6CD953061BDBa4E3da6b177447`](https://lineascan.build/address/0xfa803b63DaACCa6CD953061BDBa4E3da6b177447) |
-| Scroll | [`0x0000006D38568b00B457580b734e0076C62de659`](https://scrollscan.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01`](https://scrollscan.com/address/0x1dE5910A2b0f860A226a8a43148aeA91afbE3d01) |
 | ZkSync | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.zksync.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb`](https://explorer.zksync.io/address/0x000000000E0E120FCAc7b4d98e9E35E1DE6fdadb) |
 | Fraxtal | [`0x00000000e18aFc20Afe54d4B2C8688bB60c06B36`](https://fraxscan.com/address/0x00000000e18aFc20Afe54d4B2C8688bB60c06B36) | [`0x34029e02821178B4387e12644896994f910D6E73`](https://fraxscan.com/address/0x34029e02821178B4387e12644896994f910D6E73) |
 | Somnia | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explorer.somnia.network/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://explorer.somnia.network/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
 | Tempo | [`0x0000006D38568b00B457580b734e0076C62de659`](https://explore.tempo.xyz/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f`](https://explore.tempo.xyz/address/0x05b4a311Aac6658C0FA1e0247Be898aae8a8581f) |
 | Robinhood | [`0x0000006D38568b00B457580b734e0076C62de659`](https://robinhoodchain.blockscout.com/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://robinhoodchain.blockscout.com/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
+| Celo | [`0x0000006D38568b00B457580b734e0076C62de659`](https://celoscan.io/address/0x0000006D38568b00B457580b734e0076C62de659) | [`0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F`](https://celoscan.io/address/0xbfCb6F2f811a0DA4D54386458bF888B769EbFc5F) |
+
+### 2.0.2 Implementations
+
+The `Hop` proxies above serve whichever implementation their ProxyAdmin points at; `version()` on the proxy reports
+it. The 2.0.2 implementations are deployed and verified, and the proxies move to them when the batches in
+`src/script/hop/upgrade/txs/` execute.
+
+| Contract | Address | Chains |
+| --- | --- | --- |
+| `RemoteHopV201` | [`0xcefA9C7FD4c9151D15019e7e3AEf1eB341e22b13`](https://arbiscan.io/address/0xcefA9C7FD4c9151D15019e7e3AEf1eB341e22b13) | Every remote chain except Tempo (CREATE2, same address and runtime code everywhere) |
+| `FraxtalHopV201` | [`0x190738266d9f8e71Efb71357B294D713Af650026`](https://fraxscan.com/address/0x190738266d9f8e71Efb71357B294D713Af650026) | Fraxtal |
+| `RemoteHopV201Tempo` | [`0x8c48927557F6c1D55E82f3145b730b3AEBf8C058`](https://explore.tempo.xyz/address/0x8c48927557F6c1D55E82f3145b730b3AEBf8C058) | Tempo |
+
+On Ethereum the ProxyAdmin owner is a Compound-style timelock (1-day delay, 14-day grace period) whose admin is the
+Safe `0xfFFffF4F3baC444b2C0ecf2A1840d018bE783937`, so the upgrade is two batches: `1-<safe>-queue.json`, then
+`1-<safe>-execute.json` once `eta` has passed. `queueTransaction` checks `eta >= block.timestamp + delay` when the
+queue batch executes, so the generator sets `eta` to now + delay + `TIMELOCK_ETA_MARGIN` (default 3 days) and prints
+the deadline for the queue; `TIMELOCK_ETA` pins an exact value, to share one eta with another batch on the same
+timelock. If the queue cannot execute by that deadline, regenerate both files with
+`forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url <ethereum rpc>` (no `--broadcast`).
+
+### Tempo Fee-Inclusive Wrapper
+
+| Chain | `TempoFeeInclusiveWrapper` |
+| --- | --- |
+| Tempo | [`0x2cfcA4A7ecE48860bfb78B7BD7Bd8CC9Ef75DaA3`](https://explore.tempo.xyz/address/0x2cfcA4A7ecE48860bfb78B7BD7Bd8CC9Ef75DaA3) |
+
+It replaces `0x4877c528468a64fd5fba87ddefd517dca72814a3`, which predates the `ZeroRecipient()` check. Integrators
+should move to the address above.
+
 ---
 
 ## 9. Integration Checklist

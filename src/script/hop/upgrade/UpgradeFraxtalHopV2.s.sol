@@ -9,7 +9,7 @@ import { SafeTx } from "frax-std/SafeTxHelper.sol";
 
 // forge script src/script/hop/upgrade/UpgradeFraxtalHopV2.s.sol --rpc-url https://rpc.frax.com --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 //
-// Hop 2.1.0 on the Fraxtal hub: deploys FraxtalHopV201 (plain CREATE) and writes the Fraxtal Safe batch
+// Hop 2.1.0 on the Fraxtal hub: deploys FraxtalHopV201 (CREATE2, reused if already deployed) and writes the Fraxtal Safe batch
 //   [upgradeAndCall(hub, impl), grantRole(RECOVER_ETH_ROLE, msig), setActionModule(ACTION_MODULE)]
 // ACTION_MODULE is the MintRedeemModule proxy from DeployMintRedeemModule.s.sol. Leave it unset to omit the call.
 contract UpgradeFraxtalHopV2 is UpgradeHopV2 {
@@ -18,10 +18,10 @@ contract UpgradeFraxtalHopV2 is UpgradeHopV2 {
         super.setUp();
     }
 
+    bytes32 internal constant SALT = 0x4e59b44847b379578588920ca78fbf26c0b4956cada2dc35a2676e8544030084;
+
     function deployImplementation() internal virtual override {
-        vm.startBroadcast();
-        newImplementation = address(new FraxtalHopV201());
-        vm.stopBroadcast();
+        newImplementation = _deployCreate2(SALT, type(FraxtalHopV201).creationCode);
     }
 
     /// @dev A module with code is not enough: it must be the mint/redeem module wired for THIS hub, with both OFTs of
