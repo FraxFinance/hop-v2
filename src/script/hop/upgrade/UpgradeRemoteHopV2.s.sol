@@ -26,6 +26,7 @@ import { RemoteHopV201 } from "src/contracts/hop/RemoteHopV201.sol";
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://rpc.linea.build --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 // zksync
 // forge script src/script/hop/upgrade/UpgradeRemoteHopV2.s.sol --rpc-url https://api.infra.mainnet.somnia.network --ffi --gcp --sender 0x54f9b12743a7deec0ea48721683cbebedc6e17bc --broadcast --verify
+// Tempo: src/script/hop/upgrade/UpgradeRemoteHopV2Tempo.s.sol
 
 contract UpgradeRemoteHopV2 is UpgradeHopV2 {
     function setUp() public override {
@@ -35,6 +36,8 @@ contract UpgradeRemoteHopV2 is UpgradeHopV2 {
 
     bytes32 internal constant SALT = 0x4e59b44847b379578588920ca78fbf26c0b4956ce6ac70492feaa59e63000008;
 
+    /// @dev Tempo's implementation takes the endpoint as a constructor argument and ships from
+    ///      `UpgradeRemoteHopV2Tempo.s.sol`.
     function deployImplementation() internal virtual override {
         require(block.chainid != 4217, "Tempo: use UpgradeRemoteHopV2Tempo.s.sol");
 

@@ -1,4 +1,4 @@
-pragma solidity ^0.8.0;
+pragma solidity 0.8.23;
 
 import { ERC1967Utils } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 import { FraxtalHopV201 } from "src/contracts/hop/FraxtalHopV201.sol";
@@ -8,7 +8,7 @@ import { Script, console } from "forge-std/Script.sol";
 import { SafeTx, SafeTxHelper } from "frax-std/SafeTxHelper.sol";
 
 /// @dev version() every implementation deployed by the upgrade scripts must report
-string constant HOP_VERSION = "2.0.2";
+string constant HOP_VERSION = "2.1.0";
 
 abstract contract UpgradeHopV2 is Script {
     using Strings for address;
@@ -67,6 +67,11 @@ abstract contract UpgradeHopV2 is Script {
         return ok && out.length == 32 && abi.decode(out, (bool));
     }
 
+    /// @dev Chain-specific calls appended to the batch after the simulated upgrade, e.g. the hub's setActionModule.
+    function _appendExtraTxs() internal virtual {}
+
+    /// @dev Split into small steps on purpose: each piece keeps its frame shallow enough for via-IR codegen even
+    ///      when the implementation constructor takes arguments (the Tempo variant).
     function generateMsigTx() internal virtual {
         if (block.chainid == 1) {
             _generateEthereumTx();
@@ -74,8 +79,16 @@ abstract contract UpgradeHopV2 is Script {
         }
 
         vm.startPrank(msig);
+        _pushUpgrade();
+        _pushRecoverRoleGrant();
+        _appendExtraTxs();
+        vm.stopPrank();
 
-        // upgrade implementation
+        safeTxHelper.writeTxs(safeTxs, _batchPath(msig, ".json"));
+    }
+
+    /// @dev Simulates and records the proxy upgrade.
+    function _pushUpgrade() internal {
         bytes memory data = abi.encodeWithSignature(
             "upgradeAndCall(address,address,bytes)",
             hop,
@@ -85,34 +98,32 @@ abstract contract UpgradeHopV2 is Script {
         (bool success, ) = proxyAdmin.call(data);
         require(success, "Upgrade failed");
         safeTxs.push(SafeTx({ name: "upgrade", to: proxyAdmin, value: 0, data: data }));
+    }
 
-        // grant RECOVER_ETH_ROLE to multisig when the target exposes it (HopV201 variants) and it is not held yet
-        bytes32 recoverRole;
-        (success, data) = hop.staticcall(abi.encodeWithSignature("RECOVER_ETH_ROLE()"));
-        if (success && data.length == 32 && !_hasRole(abi.decode(data, (bytes32)), msig)) {
-            recoverRole = abi.decode(data, (bytes32));
-            data = abi.encodeWithSignature("grantRole(bytes32,address)", recoverRole, msig);
-            (success, ) = hop.call(data);
-            if (success) {
-                safeTxs.push(SafeTx({ name: "grant recover role", to: hop, value: 0, data: data }));
-            } else {
-                revert("grantRole(RECOVER_ETH_ROLE, msig) failed");
-            }
-        }
-        vm.stopPrank();
+    /// @dev Grants RECOVER_ETH_ROLE to the multisig when the (now upgraded) target exposes it and it is not held yet.
+    function _pushRecoverRoleGrant() internal {
+        (bool success, bytes memory data) = hop.staticcall(abi.encodeWithSignature("RECOVER_ETH_ROLE()"));
+        if (!success || data.length != 32 || _hasRole(abi.decode(data, (bytes32)), msig)) return;
 
-        string memory filepath = string(
-            abi.encodePacked(
-                vm.projectRoot(),
-                "/src/script/hop/upgrade/txs/",
-                block.chainid.toString(),
-                "-",
-                msig.toHexString(),
-                ".json"
-            )
-        );
+        data = abi.encodeWithSignature("grantRole(bytes32,address)", abi.decode(data, (bytes32)), msig);
+        (success, ) = hop.call(data);
+        require(success, "grantRole(RECOVER_ETH_ROLE, msig) failed");
+        safeTxs.push(SafeTx({ name: "grant recover role", to: hop, value: 0, data: data }));
+    }
 
-        safeTxHelper.writeTxs(safeTxs, filepath);
+    /// @dev `<root>/src/script/hop/upgrade/txs/<chainid>-<signer><suffix>`
+    function _batchPath(address _signer, string memory _suffix) internal view returns (string memory) {
+        return
+            string(
+                abi.encodePacked(
+                    vm.projectRoot(),
+                    "/src/script/hop/upgrade/txs/",
+                    block.chainid.toString(),
+                    "-",
+                    _signer.toHexString(),
+                    _suffix
+                )
+            );
     }
 
     function _generateEthereumTx() internal {
@@ -166,17 +177,7 @@ abstract contract UpgradeHopV2 is Script {
         SafeTx[] memory queueTxs = new SafeTx[](1);
         queueTxs[0] = SafeTx({ name: "timelock queue upgrade", to: timelock, value: 0, data: queueData });
 
-        string memory queueFilepath = string(
-            abi.encodePacked(
-                vm.projectRoot(),
-                "/src/script/hop/upgrade/txs/",
-                block.chainid.toString(),
-                "-",
-                governor.toHexString(),
-                "-queue.json"
-            )
-        );
-        safeTxHelper.writeTxs(queueTxs, queueFilepath);
+        safeTxHelper.writeTxs(queueTxs, _batchPath(governor, "-queue.json"));
 
         // --- File 2: execute the upgrade (sign after eta has passed) ---
         bytes memory executeData = abi.encodeWithSignature(
@@ -199,17 +200,7 @@ abstract contract UpgradeHopV2 is Script {
         SafeTx[] memory executeTxs = new SafeTx[](1);
         executeTxs[0] = SafeTx({ name: "timelock execute upgrade", to: timelock, value: 0, data: executeData });
 
-        string memory executeFilepath = string(
-            abi.encodePacked(
-                vm.projectRoot(),
-                "/src/script/hop/upgrade/txs/",
-                block.chainid.toString(),
-                "-",
-                governor.toHexString(),
-                "-execute.json"
-            )
-        );
-        safeTxHelper.writeTxs(executeTxs, executeFilepath);
+        safeTxHelper.writeTxs(executeTxs, _batchPath(governor, "-execute.json"));
 
         // --- File 3: grant RECOVER_ETH_ROLE to the timelock ---
         // The upgrade hasn't executed yet, so the proxy still runs old code

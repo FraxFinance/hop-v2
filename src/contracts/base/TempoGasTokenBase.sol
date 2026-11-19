@@ -199,7 +199,7 @@ abstract contract TempoGasTokenBase {
     /// @dev Collects `_nativeFee` worth of gas payment into this contract as a single whitelisted token,
     ///      debiting the caller's FeeManager fee token with no cap other than their allowance.
     function _collectNativeAltToken(uint256 _nativeFee) internal returns (address paymentToken) {
-        return _collectNativeAltToken(_nativeFee, _resolveUserToken(), type(uint256).max);
+        return _collectNativeAltToken(_nativeFee, _resolveUserToken(), type(uint256).max, msg.sender);
     }
 
     /// @dev Collects `_nativeFee` worth of gas payment into this contract as a single whitelisted token,
@@ -207,11 +207,13 @@ abstract contract TempoGasTokenBase {
     ///      `quoteUserTokenFee` reports for the same inputs -- would exceed `_maxUserTokenAmount`.
     ///      This is useful for callers that need to split one collected payment across multiple consumers.
     ///      On the DEX path the caller is debited `quoteUserTokenFee` (quote plus headroom); whatever the
-    ///      swap does not consume is refunded in the same call, so the net debit is at most that figure.
+    ///      swap does not consume is refunded to `_refundTo` in the same call, so when `_refundTo` is the payer
+    ///      the net debit is at most that figure.
     function _collectNativeAltToken(
         uint256 _nativeFee,
         address userToken,
-        uint256 _maxUserTokenAmount
+        uint256 _maxUserTokenAmount,
+        address _refundTo
     ) internal returns (address paymentToken) {
         if (_nativeFee == 0) return userToken;
 
@@ -241,7 +243,7 @@ abstract contract TempoGasTokenBase {
         // The DEX pulls tokenIn without consuming the allowance, so clear it rather than leave it dangling.
         ITIP20(userToken).approve(address(StdPrecompiles.STABLECOIN_DEX), 0);
         if (maxAmountIn > spentAmountIn) {
-            ITIP20(userToken).transfer(msg.sender, maxAmountIn - spentAmountIn);
+            ITIP20(userToken).transfer(_refundTo, maxAmountIn - spentAmountIn);
         }
 
         return targetToken;

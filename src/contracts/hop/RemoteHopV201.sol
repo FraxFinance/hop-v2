@@ -6,6 +6,7 @@ import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces
 import { OptionsBuilder } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oapp/libs/OptionsBuilder.sol";
 import { SendParam } from "@fraxfinance/layerzero-v2-upgradeable/oapp/contracts/oft/interfaces/IOFT.sol";
 import { HopV201, HopMessage } from "src/contracts/hop/HopV201.sol";
+import { HopActions } from "src/contracts/libraries/HopActions.sol";
 
 // ====================================================================
 // |     ______                   _______                             |
@@ -59,6 +60,8 @@ contract RemoteHopV201 is HopV201, IOAppComposer {
             bytes memory options = OptionsBuilder.newOptions();
             if (_hopMessage.dstGas < 400_000) _hopMessage.dstGas = 400_000;
             uint128 fraxtalGas = 1_000_000;
+            // A hub action runs the mint-redeemer and a lockbox send inside the compose; book the budget for it.
+            if (HopActions.isMintRedeem(_hopMessage.data)) fraxtalGas = HopActions.HUB_GAS_MINT_REDEEM;
             if (_hopMessage.dstGas > fraxtalGas && _hopMessage.dstEid == FRAXTAL_EID) fraxtalGas = _hopMessage.dstGas;
             options = OptionsBuilder.addExecutorLzComposeOption(options, 0, fraxtalGas, 0);
             sendParam.extraOptions = options;
